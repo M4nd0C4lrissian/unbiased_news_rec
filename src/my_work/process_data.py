@@ -17,13 +17,16 @@ def process(training_data_path, label_data_path, common_col, new_col):
     return labels
 
 
-training_data_path = 'unbiased_news_rec\\src\\data\\auto_encoder_training\\bert_training_set.csv'
-label_data_path = 'unbiased_news_rec\\src\\data\\auto_encoder_training\\training_mask.csv'
+if __name__ == '__main__':
 
-common_col = 'article_id'
-new_col = 'source_partisan_score'
+    training_data_path = 'src\\data\\auto_encoder_training\\bert_training_set.csv'
+    label_data_path = 'src\\data\\auto_encoder_training\\training_mask.csv'
 
-labels = process(training_data_path, label_data_path, common_col, new_col)
+    common_col = 'article_id'
+    new_col = 'source_partisan_score'
 
-df = pd.DataFrame(labels, columns=['article_id', 'source_partisan_score'])
-df.to_csv('unbiased_news_rec\\src\\data\\auto_encoder_training\\partisan_labels.csv')
+    labels = process(training_data_path, label_data_path, common_col, new_col)
+
+    df = pd.DataFrame(labels, columns=['article_id', 'source_partisan_score'])
+    df.to_csv('src\\data\\auto_encoder_training\\partisan_labels.csv')
+    
