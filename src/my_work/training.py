@@ -8,6 +8,7 @@ from torch.utils.data import DataLoader
 from custom_article_embedding_dataset import CustomArticleEmbeddingDataset as CD
 
 # Encoder with residual connections
+## make model bigger
 class Encoder(nn.Module):
     def __init__(self, bert_dim, intermediate_dim, final_dim):
         super(Encoder, self).__init__()
@@ -102,8 +103,8 @@ def compute_losses(encoder_output, polarity_decoded, polarity_free_decoded, pola
 # Training loop
 def train(model, dataset, val_dataset, optimizer, path_to_data, embedding_batch_num, num_epochs=10):
 
-    data_loader = DataLoader(dataset, batch_size= embedding_batch_num // 10, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=embedding_batch_num // 10, shuffle=False)
+    data_loader = DataLoader(dataset, batch_size= embedding_batch_num // 5, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=embedding_batch_num // 5, shuffle=False)
 
     for epoch in range(num_epochs):
 
@@ -126,9 +127,9 @@ def train(model, dataset, val_dataset, optimizer, path_to_data, embedding_batch_
 
             total_loss = recon_loss + class_loss + conf_loss
             total_train_loss += total_loss.item()
-            print(f"Reconstruction loss: {recon_loss}")
-            print(f"Classification loss: {class_loss}")
-            print(f"Confusion loss: {conf_loss}")
+            # print(f"Reconstruction loss: {recon_loss}")
+            # print(f"Classification loss: {class_loss}")
+            # print(f"Confusion loss: {conf_loss}")
 
             # Backward pass
             total_loss.backward()
@@ -152,9 +153,9 @@ def train(model, dataset, val_dataset, optimizer, path_to_data, embedding_batch_
                 )
                 total_loss = recon_loss + class_loss + conf_loss
                 total_val_loss += total_loss.item()
-                print(f"Reconstruction loss: {recon_loss}")
-                print(f"Classification loss: {class_loss}")
-                print(f"Confusion loss: {conf_loss}")
+                # print(f"Reconstruction loss: {recon_loss}")
+                # print(f"Classification loss: {class_loss}")
+                # print(f"Confusion loss: {conf_loss}")
 
         avg_val_loss = total_val_loss / len(val_loader)
         print(f"Epoch {epoch + 1}/{num_epochs}, Avg Validation Loss: {avg_val_loss}")
@@ -168,27 +169,28 @@ if __name__ == '__main__':
 
     model = DualDecoderModel(bert_dim, intermediate_dim, encoder_output_dim, num_classes)
     optimizer = optim.Adam(model.parameters(), lr=0.001)
-
-    path_to_data = "src\data\\auto_encoder_training\\training_data\\"
     embedding_batch_num = 1000
 
-    labels_file = path_to_data + "partisan_labels.csv"
+    labels_file = "src\data\\auto_encoder_training\\training_data\\partisan_labels.csv"
+    
+    path_to_data = "D:\Bert-Embeddings\\training_data\\"
+    
     text_embedding_file = path_to_data + "text_embedding_0.pt"
     title_embedding_file = path_to_data + "title_embedding_0.pt"
 
     dataset = CD(labels_file, [text_embedding_file], [title_embedding_file], [0, embedding_batch_num])
     
-    path_to_data = "src\data\\auto_encoder_training\\validation_data\\"
+    val_path = "src\data\\auto_encoder_training\\validation_data\\"
     
     
-    labels_file = path_to_data + "validation_partisan_labels.csv"
+    labels_file = val_path + "validation_partisan_labels.csv"
     text_paths = []
     title_paths = []
     for i in range(2):
-        text_paths.append(path_to_data + f"text_embedding_{i}.pt")
-        title_paths.append(path_to_data + f"title_embedding_{i}.pt")
+        text_paths.append(val_path + f"text_embedding_{i}.pt")
+        title_paths.append(val_path + f"title_embedding_{i}.pt")
     
     val_dataset = CD(labels_file, text_paths, title_paths, [0, 2000])
 
     # Assuming `data_loader` is a PyTorch DataLoader with batches of (bert1, bert2, polarity_labels)
-    train(model, dataset, val_dataset, optimizer, path_to_data, embedding_batch_num, num_epochs=1)
+    train(model, dataset, val_dataset, optimizer, path_to_data, embedding_batch_num, num_epochs=10)
