@@ -15,13 +15,25 @@ def __normalizeLabels__(label):
 
     return torch.tensor(label)
 
+def __append_embeddings__(list):
+    tensor = torch.load(list[0])
+    
+    for i in range(1,len(list)):
+        tensor = torch.cat((tensor, torch.load(list[i])), dim=0)
+        
+    return tensor
+
 
 class CustomArticleEmbeddingDataset(Dataset):
-    def __init__(self, labels_file, text_embedding_file, title_embedding_file, slice, transform = __normalizeLabels__):
+    def __init__(self, labels_file, text_embedding_files, title_embedding_files, slice, transform = __normalizeLabels__):
+        
+        if len(text_embedding_files) != len(title_embedding_files):
+            raise Exception('must have the same number of files')
+        
         self.all_article_labels = pd.read_csv(labels_file)
         self.current_article_labels = self.all_article_labels.iloc[slice[0] : slice[1], ]
-        self.text_embeddings = torch.load(text_embedding_file)
-        self.title_embeddings = torch.load(title_embedding_file)
+        self.text_embeddings = __append_embeddings__(text_embedding_files)
+        self.title_embeddings = __append_embeddings__(title_embedding_files)
         self.transform = transform
 
 
@@ -47,10 +59,19 @@ class CustomArticleEmbeddingDataset(Dataset):
 
 if __name__ == '__main__':
 
-    labels_file = "unbiased_news_rec\src\data\\auto_encoder_training\partisan_labels.csv"
-    text_embedding_file = "unbiased_news_rec\src\data\\auto_encoder_training\\text_embedding_0.pt"
-    title_embedding_file = "unbiased_news_rec\src\data\\auto_encoder_training\\title_embedding_0.pt"
+    # labels_file = "src\data\\auto_encoder_training\partisan_labels.csv"
+    # text_embedding_file = "src\data\\auto_encoder_training\\training_data\\text_embedding_0.pt"
+    # title_embedding_file = "src\data\\auto_encoder_training\\training_data\\title_embedding_0.pt"
+    
+    # C = CustomArticleEmbeddingDataset(labels_file, [text_embedding_file], [title_embedding_file], [0 , 1000])
+    
+    labels_file = "src\data\\auto_encoder_training\\validation_partisan_labels.csv"
+    text_embedding_file = "src\data\\auto_encoder_training\\validation_data\\text_embedding_0.pt"
+    title_embedding_file = "src\data\\auto_encoder_training\\validation_data\\title_embedding_0.pt"
+    
+    text_embedding_file2 = "src\data\\auto_encoder_training\\validation_data\\text_embedding_1.pt"
+    title_embedding_file2 = "src\data\\auto_encoder_training\\validation_data\\title_embedding_1.pt"
 
-    C = CustomArticleEmbeddingDataset(labels_file, text_embedding_file, title_embedding_file, [0 , 1000])
+    C = CustomArticleEmbeddingDataset(labels_file, [text_embedding_file, text_embedding_file2], [title_embedding_file, title_embedding_file2], [0 , 2000])
 
     print(C.__getitem__(2))

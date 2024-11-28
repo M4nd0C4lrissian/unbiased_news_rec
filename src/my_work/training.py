@@ -29,8 +29,8 @@ class Encoder(nn.Module):
         x = torch.mean(x, dim=-1)  # (batch_size, intermediate_dim)
         
         # Fully connected layers with residual connections
-        x1 = F.relu(self.fc1(x))  # (batch_size, intermediate_dim)
-        x2 = F.relu(self.fc2(torch.cat((x, x1), dim=-1)))  # (batch_size, final_dim)
+        x1 = F.leaky_relu(self.fc1(x), negative_slope=0.1)  # (batch_size, intermediate_dim)
+        x2 = F.leaky_relu(self.fc2(torch.cat((x, x1), dim=-1)), negative_slope=0.1)  # (batch_size, final_dim)
         x3 = self.final_activation(x2)  # (batch_size, final_dim)
         return x3, x
 
@@ -100,15 +100,20 @@ def compute_losses(encoder_output, polarity_decoded, polarity_free_decoded, pola
     return reconstruction_loss, classification_loss, confusion_loss
 
 # Training loop
-def train(model, dataset, optimizer, path_to_data, embedding_batch_num, num_epochs=10):
+def train(model, dataset, val_dataset, optimizer, path_to_data, embedding_batch_num, num_epochs=10):
 
     data_loader = DataLoader(dataset, batch_size= embedding_batch_num // 10, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=embedding_batch_num // 10, shuffle=False)
 
     for epoch in range(num_epochs):
 
         dataset.update_dataset(path_to_data + f'text_embedding_{epoch}.pt', path_to_data + f'title_embedding_{epoch}.pt', [epoch*embedding_batch_num, (epoch + 1)*embedding_batch_num])
+        
+        # Training phase
+        model.train()
+        total_train_loss = 0
 
-        for bert1, bert2, polarity_labels in data_loader:
+        for batch_idx, (bert1, bert2, polarity_labels) in enumerate(data_loader):
             optimizer.zero_grad()
 
             # Forward pass
@@ -120,29 +125,70 @@ def train(model, dataset, optimizer, path_to_data, embedding_batch_num, num_epoc
             )
 
             total_loss = recon_loss + class_loss + conf_loss
+            total_train_loss += total_loss.item()
+            print(f"Reconstruction loss: {recon_loss}")
+            print(f"Classification loss: {class_loss}")
+            print(f"Confusion loss: {conf_loss}")
+
+            # Backward pass
             total_loss.backward()
             optimizer.step()
+            print(f"Epoch {epoch + 1}, Batch {batch_idx + 1}/{len(data_loader)}, Batch Loss: {total_loss.item()}")
 
-        print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {total_loss.item()}")
+        avg_train_loss = total_train_loss / len(data_loader)
+        print(f"Epoch {epoch + 1}/{num_epochs}, Avg Training Loss: {avg_train_loss}")
+        
+        # Validation phase
+        model.eval()
+        total_val_loss = 0
+        with torch.no_grad():
+            for bert1, bert2, polarity_labels in val_loader:
+                # Forward pass
+                encoded, polarity_decoded, polarity_free_decoded, polarity_pred, polarity_free_pred = model(bert1, bert2)
 
+                # Loss computation
+                recon_loss, class_loss, conf_loss = compute_losses(
+                    encoded, polarity_decoded, polarity_free_decoded, polarity_pred, polarity_free_pred, polarity_labels
+                )
+                total_loss = recon_loss + class_loss + conf_loss
+                total_val_loss += total_loss.item()
+                print(f"Reconstruction loss: {recon_loss}")
+                print(f"Classification loss: {class_loss}")
+                print(f"Confusion loss: {conf_loss}")
 
-# Example usage
-bert_dim = 60 + 128  # Example BERT embedding size
-intermediate_dim = 128
-encoder_output_dim = 64
-num_classes = 3  # {-1, 0, 1}
+        avg_val_loss = total_val_loss / len(val_loader)
+        print(f"Epoch {epoch + 1}/{num_epochs}, Avg Validation Loss: {avg_val_loss}")
 
-model = DualDecoderModel(bert_dim, intermediate_dim, encoder_output_dim, num_classes)
-optimizer = optim.Adam(model.parameters(), lr=0.001)
+if __name__ == '__main__':
+    # Example usage
+    bert_dim = 60 + 128  # Example BERT embedding size
+    intermediate_dim = 128
+    encoder_output_dim = 64
+    num_classes = 3  # {-1, 0, 1}
 
-path_to_data = "src\data\\auto_encoder_training\\"
-embedding_batch_num = 1000
+    model = DualDecoderModel(bert_dim, intermediate_dim, encoder_output_dim, num_classes)
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-labels_file = path_to_data + "partisan_labels.csv"
-text_embedding_file = path_to_data + "text_embedding_0.pt"
-title_embedding_file = path_to_data + "title_embedding_0.pt"
+    path_to_data = "src\data\\auto_encoder_training\\training_data\\"
+    embedding_batch_num = 1000
 
-dataset = CD(labels_file, text_embedding_file, title_embedding_file, [0, embedding_batch_num])
+    labels_file = path_to_data + "partisan_labels.csv"
+    text_embedding_file = path_to_data + "text_embedding_0.pt"
+    title_embedding_file = path_to_data + "title_embedding_0.pt"
 
-# Assuming `data_loader` is a PyTorch DataLoader with batches of (bert1, bert2, polarity_labels)
-train(model, dataset, optimizer, path_to_data, embedding_batch_num, num_epochs=1)
+    dataset = CD(labels_file, [text_embedding_file], [title_embedding_file], [0, embedding_batch_num])
+    
+    path_to_data = "src\data\\auto_encoder_training\\validation_data\\"
+    
+    
+    labels_file = path_to_data + "validation_partisan_labels.csv"
+    text_paths = []
+    title_paths = []
+    for i in range(2):
+        text_paths.append(path_to_data + f"text_embedding_{i}.pt")
+        title_paths.append(path_to_data + f"title_embedding_{i}.pt")
+    
+    val_dataset = CD(labels_file, text_paths, title_paths, [0, 2000])
+
+    # Assuming `data_loader` is a PyTorch DataLoader with batches of (bert1, bert2, polarity_labels)
+    train(model, dataset, val_dataset, optimizer, path_to_data, embedding_batch_num, num_epochs=1)
