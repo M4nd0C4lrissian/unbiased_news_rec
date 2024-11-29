@@ -5,14 +5,14 @@ import torch.optim as optim
 
 from torch.utils.data import DataLoader
 
-from custom_article_embedding_dataset import CustomArticleEmbeddingDataset as CD
+from my_work.custom_article_embedding_dataset import CustomArticleEmbeddingDataset as CD
 
 # Encoder with residual connections
 ## make model bigger
 class Encoder(nn.Module):
     def __init__(self, bert_dim, intermediate_dim, final_dim):
         super(Encoder, self).__init__()
-        self.conv1d = nn.Conv1d(in_channels=bert_dim, out_channels=intermediate_dim, kernel_size=1)
+        self.conv1d = nn.Conv1d(in_channels=768, out_channels=intermediate_dim, kernel_size=1)
         self.fc1 = nn.Linear(intermediate_dim, intermediate_dim)
         self.fc2 = nn.Linear(intermediate_dim * 2, final_dim)  # Residual connection
         self.final_activation = nn.Sigmoid()
@@ -20,7 +20,7 @@ class Encoder(nn.Module):
     def forward(self, x):
         # x shape: (batch_size, T, 2 * bert_dim)
         # Transpose for Conv1d: (batch_size, 2 * bert_dim, T)
-        x = x.transpose(1, 2)
+        ##x = x.transpose(1, 2)
         
         # Apply Conv1d
         x = self.conv1d(x)  # (batch_size, intermediate_dim, T)
@@ -194,3 +194,13 @@ if __name__ == '__main__':
 
     # Assuming `data_loader` is a PyTorch DataLoader with batches of (bert1, bert2, polarity_labels)
     train(model, dataset, val_dataset, optimizer, path_to_data, embedding_batch_num, num_epochs=10)
+    torch.save(model.state_dict, 'src\my_work\models\\full_model.pt')
+    
+    
+    polarity_decoder = model.polarity_decoder
+    polarity_free_decoder = model.polarity_free_decoder
+    encoder = model.encoder
+    
+    torch.save(polarity_decoder.state_dict, 'src\my_work\models\polarity_decoder.pt')
+    torch.save(polarity_free_decoder.state_dict, 'src\my_work\models\polarity_free_decoder.pt')
+    torch.save(encoder.state_dict, 'src\my_work\models\encoder.pt')
