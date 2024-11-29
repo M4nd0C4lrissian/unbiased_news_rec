@@ -201,6 +201,6 @@ if __name__ == '__main__':
     polarity_free_decoder = model.polarity_free_decoder
     encoder = model.encoder
     
-    torch.save(polarity_decoder.state_dict, 'src\my_work\models\polarity_decoder.pt')
-    torch.save(polarity_free_decoder.state_dict, 'src\my_work\models\polarity_free_decoder.pt')
-    torch.save(encoder.state_dict, 'src\my_work\models\encoder.pt')
+    torch.save(polarity_decoder.state_dict(), 'src\my_work\models\polarity_decoder.pt')
+    torch.save(polarity_free_decoder.state_dict(), 'src\my_work\models\polarity_free_decoder.pt')
+    torch.save(encoder.state_dict(), 'src\my_work\models\encoder.pt')
