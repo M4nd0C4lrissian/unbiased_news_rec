@@ -130,3 +130,6 @@ dot_product_matrix = linear_kernel(distance_embeddings)
 # Convert back to a DataFrame (optional, for easier interpretation)
 dot_product_df = pd.DataFrame(dot_product_matrix)
 dot_product_df.to_csv('unbiased_news_rec\\src\data\\user_space\\correlation_matrix.csv')
+
+##edits - use training data (only 4000 items)
+## also create a user-item matrix 

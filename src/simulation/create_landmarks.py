@@ -75,7 +75,7 @@ classes = ['bystanders', 'core conserv', 'country first conserv', 'devout and di
 
 class_utility = np.zeros((9,70), dtype=np.float64)
 for c in range(len(classes)):
-    avg_member = pd.read_csv('unbiased_news_rec\\src\\data\synthetic_user\\' + classes[c] +'.csv', header=None)
+    avg_member = pd.read_csv('unbiased_news_rec\\unbiased_news_rec\\src\\data\synthetic_user\\' + classes[c] +'.csv', header=None)
     class_utility[c] = avg_member.to_numpy().flatten()
 
     
@@ -87,7 +87,7 @@ for c in range(len(classes)):
 ## instead of constantly reloading large pt files, we do uniform sampling across all 32 batches of 1000 for each user type - first we need to load the users and
 ## calculate user choice
 
-topic_lists = pd.read_csv("unbiased_news_rec\\src\data\\landmark_data\\item_topic_vector.csv")
+topic_lists = pd.read_csv("src\data\\landmark_data\\topics_in_embedding_order.csv")
 
 ##Change here once more data
 num_batches = 1
@@ -95,7 +95,7 @@ num_batches = 1
 batch_size = 1000
 num_pos_samples = 10
 
-source_path = "unbiased_news_rec\\src\data\\auto_encoder_training\\training_data\\"
+source_path = "src\data\\auto_encoder_training\\training_data\\"
 
 type_landmarks = np.zeros((9, encoder_output_dim), dtype = np.float64)
 total_utility_score = np.zeros(9)
@@ -145,7 +145,7 @@ for type in range(9):
     type_landmarks[type] /= total_utility_score[type]
 
 df = pd.DataFrame(type_landmarks)
-df.to_csv("unbiased_news_rec\\src\data\\landmark_data\\landmark_embeddings.csv")
+df.to_csv("src\data\\landmark_data\\landmark_embeddings.csv")
 print(total_utility_score)
 
 
