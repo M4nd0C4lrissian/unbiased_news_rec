@@ -133,7 +133,7 @@ for i in range(num_batches):
 
                     print("Inference complete...")
 
-                    type_landmarks[type] = utility_score*np.add(type_landmarks[type], polarity_rep.detach().numpy())
+                    type_landmarks[type] = np.add(type_landmarks[type], utility_score * polarity_rep.detach().numpy())
 
                     pos_samples += 1
 
