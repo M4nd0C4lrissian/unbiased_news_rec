@@ -55,100 +55,100 @@ def simple_doct_product(u, v):
 
     return np.dot(u, v)
 
-
-bert_dim = 60 + 256  # Example BERT embedding size
-intermediate_dim = 256
-encoder_output_dim = 128
-
-encoder = Encoder(bert_dim, intermediate_dim, encoder_output_dim)
-polarity_decoder = Decoder(encoder_output_dim, intermediate_dim, encoder_output_dim)
-
-
-encoder.load_state_dict(torch.load('unbiased_news_rec\\src\my_work\models\encoder.pt', weights_only=True))
-polarity_decoder.load_state_dict(torch.load('unbiased_news_rec\\src\my_work\models\polarity_decoder.pt', weights_only=True))
-
-encoder.eval()
-polarity_decoder.eval()
-
-
-classes = ['bystanders', 'core conserv', 'country first conserv', 'devout and diverse', 'disaffected democrats', 'market skeptic repub', 'new era enterprisers', 'oppty democrats', 'solid liberas']
-
-class_utility = np.zeros((9,70), dtype=np.float64)
-for c in range(len(classes)):
-    avg_member = pd.read_csv('unbiased_news_rec\\unbiased_news_rec\\src\\data\synthetic_user\\' + classes[c] +'.csv', header=None)
-    class_utility[c] = avg_member.to_numpy().flatten()
-
+if __name__ == '__main__':
     
-##need to do item_sampling, meaning:
+    bert_dim = 60 + 256  # Example BERT embedding size
+    intermediate_dim = 256
+    encoder_output_dim = 128
 
-#complete ## INPUT: table schema training items item_topics = (item_id, topical_vector) ordered as our partisan_scores.csv file is relative to item_id (same order as embeddings)
+    encoder = Encoder(bert_dim, intermediate_dim, encoder_output_dim)
+    polarity_decoder = Decoder(encoder_output_dim, intermediate_dim, encoder_output_dim)
 
-## we randomly sample from item_topics, pulling their embeddings from the associated .pt file, until we have a certain number M of 'hits' - interacted-with articles
-## instead of constantly reloading large pt files, we do uniform sampling across all 32 batches of 1000 for each user type - first we need to load the users and
-## calculate user choice
 
-topic_lists = pd.read_csv("src\data\\landmark_data\\topics_in_embedding_order.csv")
+    encoder.load_state_dict(torch.load('src\my_work\models\encoder.pt', weights_only=True))
+    polarity_decoder.load_state_dict(torch.load('src\my_work\models\polarity_decoder.pt', weights_only=True))
 
-##Change here once more data
-num_batches = 1
+    encoder.eval()
+    polarity_decoder.eval()
 
-batch_size = 1000
-num_pos_samples = 10
 
-source_path = "src\data\\auto_encoder_training\\training_data\\"
+    classes = ['bystanders', 'core conserv', 'country first conserv', 'devout and diverse', 'disaffected democrats', 'market skeptic repub', 'new era enterprisers', 'oppty democrats', 'solid liberas']
 
-type_landmarks = np.zeros((9, encoder_output_dim), dtype = np.float64)
-total_utility_score = np.zeros(9)
+    class_utility = np.zeros((9,70), dtype=np.float64)
+    for c in range(len(classes)):
+        avg_member = pd.read_csv('src\\data\synthetic_user\\' + classes[c] +'.csv', header=None)
+        class_utility[c] = avg_member.to_numpy().flatten()
+        
+    ##need to do item_sampling, meaning:
 
-for i in range(num_batches):
+    #complete ## INPUT: table schema training items item_topics = (item_id, topical_vector) ordered as our partisan_scores.csv file is relative to item_id (same order as embeddings)
 
-    text_embedding_file = torch.load(source_path + f"text_embedding_{i}.pt")
-    title_embedding_file = torch.load(source_path + f"title_embedding_{i}.pt")
+    ## we randomly sample from item_topics, pulling their embeddings from the associated .pt file, until we have a certain number M of 'hits' - interacted-with articles
+    ## instead of constantly reloading large pt files, we do uniform sampling across all 32 batches of 1000 for each user type - first we need to load the users and
+    ## calculate user choice
 
-    print('Loaded embeddings!')
+    topic_lists = pd.read_csv("src\data\\landmark_data\\topics_in_embedding_order.csv")
+    ##Change here once more data
+    num_batches = 1
 
-    with torch.no_grad():
+    batch_size = 1000
+    num_pos_samples = 10
 
-        for type in range(9):  
-            pos_samples = 0
+    source_path = "src\data\\auto_encoder_training\\training_data\\"
+    type_landmarks = np.zeros((9, encoder_output_dim), dtype = np.float64)
+    total_utility_score = np.zeros(9)
 
-            while pos_samples < num_pos_samples:
-                r = np.random.randint(0, batch_size)
+    for i in range(num_batches):
 
-                topic_vector = ast.literal_eval(topic_lists.iloc[r]['topical_vector'])
+        text_embedding_file = torch.load(source_path + f"text_embedding_{i}.pt")
+        title_embedding_file = torch.load(source_path + f"title_embedding_{i}.pt")
 
-                did_interact, utility_score = user_interaction(class_utility[type], topic_vector)
+        print('Loaded embeddings!')
 
-                if did_interact:
+        with torch.no_grad():
 
-                    print(f'User interacted with a utility score of {utility_score}')
+            for type in range(9):  
+                pos_samples = 0
 
-                    total_utility_score[type] += utility_score
+                while pos_samples < num_pos_samples:
+                    r = np.random.randint(0, batch_size)
 
-                    text = text_embedding_file[r]
-                    title = title_embedding_file[r]
+                    acc = i * batch_size + r
 
-                    x2, _ = encoder(torch.cat((title.T, text.T), dim=-1))
-                    polarity_rep = polarity_decoder(x2)
+                    topic_vector = ast.literal_eval(topic_lists.iloc[acc]['topical_vector'])
 
-                    print("Inference complete...")
+                    did_interact, utility_score = user_interaction(class_utility[type], topic_vector)
 
-                    type_landmarks[type] = np.add(type_landmarks[type], utility_score * polarity_rep.detach().numpy())
+                    if did_interact:
 
-                    pos_samples += 1
+                        print(f'User interacted with a utility score of {utility_score}')
 
-                else:
-                    print('Did not interact... continuing')
-                    continue
+                        total_utility_score[type] += utility_score
 
-for type in range(9):
-    type_landmarks[type] /= total_utility_score[type]
+                        text = text_embedding_file[r]
+                        title = title_embedding_file[r]
+
+                        x2, _ = encoder(torch.cat((title.T, text.T), dim=-1))
+                        polarity_rep = polarity_decoder(x2)
+
+                        print("Inference complete...")
+
+                        type_landmarks[type] = np.add(type_landmarks[type], utility_score * polarity_rep.detach().numpy())
+
+                        pos_samples += 1
+
+                    else:
+                        print('Did not interact... continuing')
+                        continue
+
+    for type in range(9):
+        type_landmarks[type] /= total_utility_score[type]
 
 df = pd.DataFrame(type_landmarks)
 df.to_csv("src\data\\landmark_data\\landmark_embeddings.csv")
 print(total_utility_score)
 
 
-# we compute their polarity-encoded representation, and perform a weighted average over them according to the user_interaction score
-## upon doing this for each class, we will have a 64 dimension user profile for each of the 9,
-## for other users, their 64 dimension embedding will be cast to 9, each element being the distance of their 64-d vector to each landmark 64 d
+    # we compute their polarity-encoded representation, and perform a weighted average over them according to the user_interaction score
+    ## upon doing this for each class, we will have a 64 dimension user profile for each of the 9,
+    ## for other users, their 64 dimension embedding will be cast to 9, each element being the distance of their 64-d vector to each landmark 64 d
