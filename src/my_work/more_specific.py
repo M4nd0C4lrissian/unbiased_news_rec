@@ -150,7 +150,7 @@ if __name__ == '__main__':
     model = DualDecoderModel(bert_dim, intermediate_dim, encoder_output_dim, num_classes)
     optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-    path_to_data = "src\data\\auto_encoder_training\\"
+    path_to_data = "unbiased_news_rec\src\data\\auto_encoder_training\\"
     embedding_batch_num = 1000
 
     labels_file = path_to_data + "partisan_labels.csv"
@@ -162,4 +162,4 @@ if __name__ == '__main__':
     # Assuming `data_loader` is a PyTorch DataLoader with batches of (bert1, bert2, polarity_labels)
     train(model, dataset, optimizer, path_to_data, embedding_batch_num, num_epochs=1)
 
-    torch.save(model.state_dict(), 'src\\data\\auto_encoder_training\\test_state_dict.pt')
+    torch.save(model.state_dict(), 'unbiased_news_rec\\src\\data\\auto_encoder_training\\test_state_dict.pt')

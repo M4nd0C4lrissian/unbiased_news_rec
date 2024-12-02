@@ -103,8 +103,8 @@ def compute_losses(encoder_output, polarity_decoded, polarity_free_decoded, pola
 # Training loop
 def train(model, dataset, val_dataset, optimizer, path_to_data, embedding_batch_num, num_epochs=10):
 
-    data_loader = DataLoader(dataset, batch_size= embedding_batch_num // 5, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=embedding_batch_num // 5, shuffle=False)
+    data_loader = DataLoader(dataset, batch_size= embedding_batch_num // 20, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=embedding_batch_num // 20, shuffle=False)
 
     for epoch in range(num_epochs):
 
@@ -162,13 +162,13 @@ def train(model, dataset, val_dataset, optimizer, path_to_data, embedding_batch_
 
 if __name__ == '__main__':
     # Example usage
-    bert_dim = 60 + 128  # Example BERT embedding size
-    intermediate_dim = 128
-    encoder_output_dim = 64
+    bert_dim = 60 + 256  # Example BERT embedding size
+    intermediate_dim = 256
+    encoder_output_dim = 128
     num_classes = 3  # {-1, 0, 1}
 
     model = DualDecoderModel(bert_dim, intermediate_dim, encoder_output_dim, num_classes)
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    optimizer = optim.Adam(model.parameters(), lr=0.0001)
     embedding_batch_num = 1000
 
     labels_file = "src\data\\auto_encoder_training\\training_data\\partisan_labels.csv"
@@ -180,17 +180,17 @@ if __name__ == '__main__':
 
     dataset = CD(labels_file, [text_embedding_file], [title_embedding_file], [0, embedding_batch_num])
     
-    val_path = "src\data\\auto_encoder_training\\validation_data\\"
+    val_path = "D:\Bert-Embeddings\\validation_data\\"
     
     
-    labels_file = val_path + "validation_partisan_labels.csv"
+    labels_file = "src\data\\auto_encoder_training\\validation_data\\validation_partisan_labels.csv"
     text_paths = []
     title_paths = []
-    for i in range(2):
+    for i in range(4):
         text_paths.append(val_path + f"text_embedding_{i}.pt")
         title_paths.append(val_path + f"title_embedding_{i}.pt")
     
-    val_dataset = CD(labels_file, text_paths, title_paths, [0, 2000])
+    val_dataset = CD(labels_file, text_paths, title_paths, [0, 4000])
 
     # Assuming `data_loader` is a PyTorch DataLoader with batches of (bert1, bert2, polarity_labels)
     train(model, dataset, val_dataset, optimizer, path_to_data, embedding_batch_num, num_epochs=10)

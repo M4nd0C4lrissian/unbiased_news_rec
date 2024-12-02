@@ -89,12 +89,12 @@ if __name__ == '__main__':
 
     topic_lists = pd.read_csv("src\data\\landmark_data\\topics_in_embedding_order.csv")
     ##Change here once more data
-    num_batches = 1
+    num_batches = 10
 
     batch_size = 1000
     num_pos_samples = 10
 
-    source_path = "src\data\\auto_encoder_training\\training_data\\"
+    source_path = "D:\Bert-Embeddings\\training_data\\"
     type_landmarks = np.zeros((9, encoder_output_dim), dtype = np.float64)
     total_utility_score = np.zeros(9)
 
@@ -144,9 +144,9 @@ if __name__ == '__main__':
     for type in range(9):
         type_landmarks[type] /= total_utility_score[type]
 
-df = pd.DataFrame(type_landmarks)
-df.to_csv("src\data\\landmark_data\\landmark_embeddings.csv")
-print(total_utility_score)
+    df = pd.DataFrame(type_landmarks)
+    df.to_csv("src\data\\landmark_data\\landmark_embeddings.csv")
+    print(total_utility_score)
 
 
     # we compute their polarity-encoded representation, and perform a weighted average over them according to the user_interaction score

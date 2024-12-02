@@ -246,7 +246,7 @@ def generation(num_users, csv_file, dist=1, equal=False, random_number=42):
 
 if __name__ == "__main__":
 
-    csv_file_path = "../data/pew0423.csv"
+    csv_file_path = "unbiased_news_rec\\src\\data\\pew0423.csv"
     record = generation(1000, csv_file_path, 1)
 
     # This is for the CF algorithm.
@@ -262,6 +262,6 @@ if __name__ == "__main__":
 
         print(key, value.shape)
 
-        file_name = "./synthetic_user/" + key + ".csv"
+        file_name = "unbiased_news_rec\\src\\data\\synthetic_user\\" + key + ".csv"
 
         np.savetxt(file_name, value_ave, delimiter=",")

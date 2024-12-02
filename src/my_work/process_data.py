@@ -20,8 +20,8 @@ def process(training_data_path, label_data_path, common_col, new_col):
 
 if __name__ == '__main__':
 
-    # training_data_path = 'src\\data\\auto_encoder_training\\bert_validation_set.csv'
-    # label_data_path = 'src\\data\\auto_encoder_training\\validation_mask.csv'
+    # training_data_path = 'unbiased_news_rec\\src\\data\\auto_encoder_training\\bert_validation_set.csv'
+    # label_data_path = 'unbiased_news_rec\\src\\data\\auto_encoder_training\\validation_mask.csv'
 
     # common_col = 'article_id'
     # new_col = 'source_partisan_score'
@@ -29,10 +29,10 @@ if __name__ == '__main__':
     # labels = process(training_data_path, label_data_path, common_col, new_col)
 
     # df = pd.DataFrame(labels, columns=['article_id', 'source_partisan_score'])
-    # df.to_csv('src\\data\\auto_encoder_training\\validation_partisan_labels.csv')
+    # df.to_csv('unbiased_news_rec\\src\\data\\auto_encoder_training\\validation_partisan_labels.csv')
     
     
-    training_data_path = 'src\\data\\auto_encoder_training\\bert_training_set.csv'
+    training_data_path = 'src\\data\\auto_encoder_training\\bert_validation_set.csv'
     label_data_path = 'src\\data\\landmark_data\\item_topic_vector.csv'
     
     common_col = 'article_id'
@@ -41,5 +41,5 @@ if __name__ == '__main__':
     labels = process(training_data_path, label_data_path, common_col, new_col)
     
     # df = pd.DataFrame(labels, columns=[common_col, new_col])
-    labels.to_csv('src\\data\\landmark_data\\topics_in_embedding_order.csv')
+    labels.to_csv('src\\data\\landmark_data\\validation_topics_in_embedding_order.csv')
     

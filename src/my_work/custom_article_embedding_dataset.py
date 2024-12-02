@@ -59,18 +59,18 @@ class CustomArticleEmbeddingDataset(Dataset):
 
 if __name__ == '__main__':
 
-    # labels_file = "src\data\\auto_encoder_training\partisan_labels.csv"
-    # text_embedding_file = "src\data\\auto_encoder_training\\training_data\\text_embedding_0.pt"
-    # title_embedding_file = "src\data\\auto_encoder_training\\training_data\\title_embedding_0.pt"
+    # labels_file = "unbiased_news_rec\src\data\\auto_encoder_training\partisan_labels.csv"
+    # text_embedding_file = "unbiased_news_rec\src\data\\auto_encoder_training\\training_data\\text_embedding_0.pt"
+    # title_embedding_file = "unbiased_news_rec\src\data\\auto_encoder_training\\training_data\\title_embedding_0.pt"
     
     # C = CustomArticleEmbeddingDataset(labels_file, [text_embedding_file], [title_embedding_file], [0 , 1000])
     
-    labels_file = "src\data\\auto_encoder_training\\validation_partisan_labels.csv"
-    text_embedding_file = "src\data\\auto_encoder_training\\validation_data\\text_embedding_0.pt"
-    title_embedding_file = "src\data\\auto_encoder_training\\validation_data\\title_embedding_0.pt"
+    labels_file = "unbiased_news_rec\src\data\\auto_encoder_training\\validation_partisan_labels.csv"
+    text_embedding_file = "unbiased_news_rec\src\data\\auto_encoder_training\\validation_data\\text_embedding_0.pt"
+    title_embedding_file = "unbiased_news_rec\src\data\\auto_encoder_training\\validation_data\\title_embedding_0.pt"
     
-    text_embedding_file2 = "src\data\\auto_encoder_training\\validation_data\\text_embedding_1.pt"
-    title_embedding_file2 = "src\data\\auto_encoder_training\\validation_data\\title_embedding_1.pt"
+    text_embedding_file2 = "unbiased_news_rec\src\data\\auto_encoder_training\\validation_data\\text_embedding_1.pt"
+    title_embedding_file2 = "unbiased_news_rec\src\data\\auto_encoder_training\\validation_data\\title_embedding_1.pt"
 
     C = CustomArticleEmbeddingDataset(labels_file, [text_embedding_file, text_embedding_file2], [title_embedding_file, title_embedding_file2], [0 , 2000])
 
