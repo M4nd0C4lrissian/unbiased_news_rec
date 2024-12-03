@@ -7,11 +7,11 @@ import torch
 
 def __normalizeLabels__(label):
     if label <= -1:
-        label = [1, 0, 0]
+        label = 0
     elif label >= 1:
-        label = [1, 0, 1]
+        label = 2
     else:
-        label = [0, 1, 0]
+        label = 1
 
     return torch.tensor(label)
 

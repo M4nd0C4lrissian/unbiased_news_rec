@@ -7,19 +7,20 @@ import torch
 import ast
 from create_landmarks import user_interaction
 from sklearn.metrics.pairwise import linear_kernel
+from scipy.stats.stats import pearsonr   
 
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if parent_dir not in sys.path:
     sys.path.append(parent_dir)
 from my_work.training import Encoder, Decoder
 
-def generate_user_content_embedding(topic_lists, source_path, uv, encoder_output_dim, encoder, polarity_decoder, polarity_free_decoder):        
+def generate_user_content_embedding(topic_lists, source_path, text_embedding_file, title_embedding_file, uv, encoder_output_dim, encoder, polarity_decoder, polarity_free_decoder):        
             
     ##Load testing data next
-    num_batches = 4
+    num_batches = 1
     batch_size = 1000
     num_pos_samples = 10
-    item_num = 4000
+    item_num = 1000
 
     polarized_sum = np.zeros(encoder_output_dim, dtype = np.float64)
     free_sum = np.zeros(encoder_output_dim, dtype = np.float64)
@@ -28,10 +29,7 @@ def generate_user_content_embedding(topic_lists, source_path, uv, encoder_output
 
     for i in range(num_batches):
 
-        text_embedding_file = torch.load(source_path + f"text_embedding_{i}.pt")
-        title_embedding_file = torch.load(source_path + f"title_embedding_{i}.pt")
-
-        print('Loaded embeddings!')
+        # print('Loaded embeddings!')
 
         with torch.no_grad():
 
@@ -48,18 +46,18 @@ def generate_user_content_embedding(topic_lists, source_path, uv, encoder_output
 
                 if did_interact:
 
-                    print(f'User interacted with a utility score of {utility_score}')
+                    # print(f'User interacted with a utility score of {utility_score}')
 
                     total_utility_score += utility_score
 
                     text = text_embedding_file[r]
                     title = title_embedding_file[r]
 
-                    x2, _ = encoder(torch.cat((title.T, text.T), dim=-1))
+                    x2, _ = encoder(torch.cat((title.T.unsqueeze(0), text.T.unsqueeze(0)), dim=-1))
                     polarity_rep = polarity_decoder(x2)
                     polarity_free_rep = polarity_free_decoder(x2)
 
-                    print("Inference complete...")
+                    # print("Inference complete...")
 
                     polarized_sum = np.add(polarized_sum, utility_score * polarity_rep.detach().numpy())
                     free_sum = np.add(free_sum, utility_score * polarity_free_rep.detach().numpy())
@@ -69,7 +67,7 @@ def generate_user_content_embedding(topic_lists, source_path, uv, encoder_output
                     pos_samples += 1
 
                 else:
-                    print('Did not interact... continuing')
+                    # print('Did not interact... continuing')
                     continue
 
     polarized_sum /= total_utility_score
@@ -78,7 +76,7 @@ def generate_user_content_embedding(topic_lists, source_path, uv, encoder_output
     ##return (embedding, user_item vector)
     return polarized_sum, free_sum, user_item_vector
 
-bert_dim = 60 + 256  # Example BERT embedding size
+bert_dim = 768 # Example BERT embedding size
 intermediate_dim = 256
 encoder_output_dim = 128
 
@@ -100,16 +98,23 @@ landmarks = pd.read_csv("src\data\\landmark_data\\landmark_embeddings.csv").drop
 topic_lists = pd.read_csv("src\data\\landmark_data\\validation_topics_in_embedding_order.csv")     
 data_source_path = "D:\Bert-Embeddings\\validation_data\\"
 
-def dist(a, b):
-    return np.linalg.norm(a-b)
+normalized_distance = pd.read_csv('src\\data\\landmark_data\\max_dist.csv')['0'].to_numpy()
 
-def landmark_embedding(landmarks, embedding):
-    return [dist(np.array(lm), embedding) for _ , lm in landmarks.iterrows()]
+def dist(a, b, normalized_distance):
+    dist = a - b
+    n_dist = np.divide(dist, normalized_distance)
+    return np.linalg.norm(n_dist)
+
+# def dist(a, b):
+#     return pearsonr(a,b)[0]
+
+def landmark_embedding(landmarks, embedding, normalized_distance):
+    return [dist(np.array(lm), embedding, normalized_distance) for _ , lm in landmarks.iterrows()]
 
 t = pd.read_pickle('1000users.pkl')
 classes = ['bystanders', 'core conserv', 'country first conserv', 'devout and diverse', 'disaffected democrats', 'market skeptic repub', 'new era enterprisers', 'oppty democrats', 'solid liberas']
 
-item_ids = topic_lists['article_id'].values
+item_ids = topic_lists['article_id'].values[0:1000]
 
 dummy_data = np.zeros((1000, len(item_ids)))
 
@@ -120,6 +125,9 @@ user_space_matrix = pd.DataFrame(columns=['embedding', 'class'])
 polarity_free_interest_model = pd.DataFrame(columns=['interest model'])
 
 distance_embeddings = np.zeros((1000, 9), dtype=np.float64)
+
+text_embedding_file = torch.load(data_source_path + f"text_embedding_{0}.pt")
+title_embedding_file = torch.load(data_source_path + f"title_embedding_{0}.pt")
 
 q = 0
 for i in range(len(classes)):
@@ -135,10 +143,10 @@ for i in range(len(classes)):
         user = np.array(class_users[i])
         user_utility = user.flatten()
         
-        user_landmark_embedding, polarity_free_embedding, user_item_vector = generate_user_content_embedding(topic_lists, data_source_path, user_utility, encoder_output_dim, encoder, polarity_decoder, polarity_free_decoder)
+        user_landmark_embedding, polarity_free_embedding, user_item_vector = generate_user_content_embedding(topic_lists, data_source_path, text_embedding_file, title_embedding_file, user_utility, encoder_output_dim, encoder, polarity_decoder, polarity_free_decoder)
         
         ##need to drop unnamed from landmarks
-        new = landmark_embedding(landmarks, user_landmark_embedding)
+        new = landmark_embedding(landmarks, user_landmark_embedding, normalized_distance)
         
         user_item_matrix.iloc[q] = user_item_vector
         distance_embeddings[q] = new
@@ -146,6 +154,8 @@ for i in range(len(classes)):
         
         p_free_embeddings.append({'interest model': polarity_free_embedding})
         user_class_embeddings.append({'embedding': new, 'class': c})
+        
+        print(f"user {j} complete...")
     
     user_space_matrix = pd.concat([user_space_matrix, pd.DataFrame.from_records(user_class_embeddings)], ignore_index=True)
     polarity_free_interest_model = pd.concat([polarity_free_interest_model, pd.DataFrame.from_records(p_free_embeddings)], ignore_index=True)
@@ -168,3 +178,6 @@ polarity_free_interest_model.to_csv('src\\data\\CF\\interest_models.csv')
 
 ##edits - use training data (only 4000 items)
 ## also create a user-item matrix 
+
+
+##I'm dumb it was just reloading the data every time

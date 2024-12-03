@@ -57,7 +57,7 @@ def simple_doct_product(u, v):
 
 if __name__ == '__main__':
     
-    bert_dim = 60 + 256  # Example BERT embedding size
+    bert_dim = 768  # Example BERT embedding size
     intermediate_dim = 256
     encoder_output_dim = 128
 
@@ -89,10 +89,10 @@ if __name__ == '__main__':
 
     topic_lists = pd.read_csv("src\data\\landmark_data\\topics_in_embedding_order.csv")
     ##Change here once more data
-    num_batches = 10
+    num_batches = 16
 
     batch_size = 1000
-    num_pos_samples = 10
+    num_pos_samples = 1
 
     source_path = "D:\Bert-Embeddings\\training_data\\"
     type_landmarks = np.zeros((9, encoder_output_dim), dtype = np.float64)
@@ -119,8 +119,9 @@ if __name__ == '__main__':
 
                     did_interact, utility_score = user_interaction(class_utility[type], topic_vector)
 
-                    if did_interact:
-
+                    # if did_interact:
+                    if utility_score >= 0.7:
+                    
                         print(f'User interacted with a utility score of {utility_score}')
 
                         total_utility_score[type] += utility_score
@@ -128,17 +129,17 @@ if __name__ == '__main__':
                         text = text_embedding_file[r]
                         title = title_embedding_file[r]
 
-                        x2, _ = encoder(torch.cat((title.T, text.T), dim=-1))
+                        x2, _ = encoder(torch.cat((title.T.unsqueeze(0), text.T.unsqueeze(0)), dim=-1))
                         polarity_rep = polarity_decoder(x2)
 
                         print("Inference complete...")
-
+                        ##print(polarity_rep.detach().numpy())
                         type_landmarks[type] = np.add(type_landmarks[type], utility_score * polarity_rep.detach().numpy())
 
                         pos_samples += 1
 
                     else:
-                        print('Did not interact... continuing')
+                        ##print('Did not interact... continuing')
                         continue
 
     for type in range(9):
@@ -152,3 +153,5 @@ if __name__ == '__main__':
     # we compute their polarity-encoded representation, and perform a weighted average over them according to the user_interaction score
     ## upon doing this for each class, we will have a 64 dimension user profile for each of the 9,
     ## for other users, their 64 dimension embedding will be cast to 9, each element being the distance of their 64-d vector to each landmark 64 d
+    
+    ##just try normalizing them after
