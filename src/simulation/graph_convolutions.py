@@ -94,51 +94,6 @@ def normalized_bottom_k_with_bias(Bi, k, alpha=0.375):
 
     return norm_B
 
-# index_set = set()
-
-def normalized_bottom_k(Bi, k):
-    
-    norm_B = np.zeros_like(Bi, dtype=np.float64)
-    
-    for u in range(Bi.shape[0]):
-        row = Bi[u]
-
-        # Filter out NaNs and negative values
-        valid_mask = ~np.isnan(row) & (row > 0)
-        filtered_row = row[valid_mask]
-
-        # Check if there are enough valid values to select
-        if len(filtered_row) == 0:
-            norm_B[u] = np.zeros_like(row)
-            print(f'user: {u} has no viable users')
-            continue
-
-        # Get indices of the bottom-k values
-    
-        retain_ind = np.argsort(filtered_row)[:k]
-        for ind in retain_ind: 
-            index_set.add(ind)
-        retain_val = filtered_row[retain_ind]
-
-        # Calculate the sum of the retained values for normalization
-        s = np.sum(retain_val)
-        if s == 0:
-            norm_B[u] = np.zeros_like(row)
-            print('BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB')
-            continue
-
-        # Create a new row with only the top-k values retained
-        b = np.zeros_like(row)
-        original_indices = np.where(valid_mask)[0][retain_ind]
-        b[original_indices] = 1 - retain_val
-
-        # Normalize to ensure the sum is between 0 and 1
-        b = b / s
-
-        norm_B[u] = b
-        
-    return norm_B
-
 def construct_convolutions_with_user_check(Bi, f):
     """
     Construct graph convolution tensors, log sparsity trends, and check for users with no non-zero values.
@@ -196,24 +151,7 @@ def construct_convolutions_with_user_check(Bi, f):
     # plt.show()
 
     return tensor
-        
 
-def construct_convolutions(Bi, f):
-    # Convert NumPy array to a PyTorch tensor
-    Bi_torch = torch.tensor(Bi, dtype=torch.float64, device='cuda' if torch.cuda.is_available() else 'cpu')
-
-    num_rows, num_cols = Bi_torch.shape
-    # Initialize a PyTorch tensor to store the results
-    tensor = torch.zeros((f, num_rows, num_cols), device=Bi_torch.device, dtype=torch.float64)
-
-    # Set the first layer to Bi
-    tensor[0] = Bi_torch
-    for i in range(1, f):
-        # Perform batched matrix multiplication across the third dimension
-        tensor[i] = torch.matmul(tensor[i-1], Bi_torch)
-        tensor[i] = torch.nan_to_num(tensor[i], nan=0.0)
-
-    return tensor
 
 def weighted_graph_convolution(x_i, Bs, h):
 
@@ -299,8 +237,7 @@ def train_weights(matrix, B, M, true_interest_model, partisan_labels, val_data, 
     h = torch.nn.Parameter(torch.rand(f, 1, requires_grad=True, dtype=torch.float64))
 
     optimizer = optim.Adam([h], lr=lr)
-
-    ##something going wrong HERE
+    
     Bi = normalized_bottom_k_with_bias(B, k)
     B_i = construct_convolutions_with_user_check(Bi, f)
     print(B_i)
@@ -345,6 +282,13 @@ def train_weights(matrix, B, M, true_interest_model, partisan_labels, val_data, 
             print(f'Computing for user {u}')
             
             u_hat = rating_matrix[u]
+            
+            valid_mask = ~torch.isnan(u_hat) & (u_hat > 0)
+            filtered_row = u_hat[valid_mask]
+            if len(filtered_row) < M:
+                print(f"too few for user {u}, only {len(filtered_row)} found but need {M}")
+                continue
+                
         
             ##print('Predicting embedding...')
             predicted_user_embedding = get_predicted_embedding(u_hat, M, matrix, encoder_output_dim, partisan_labels, val_data, encoder, polarity_free_decoder)
