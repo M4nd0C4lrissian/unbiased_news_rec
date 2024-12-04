@@ -118,105 +118,110 @@ def create_predicted_rating_matrix():
 ## take items with the top k scores, and gauge the response / diversity of polarity and topics (also calculate loss for the time being)
 ## do the same for k random items, and compare 
 
-M = 5
-item_topic = pd.read_csv('src\\data\\landmark_data\\validation_topics_in_embedding_order.csv')
-item_polarity = pd.read_csv('src\\data\\auto_encoder_training\\validation_data\\validation_partisan_labels.csv')
+def evaluate():
+    M = 5
+    item_topic = pd.read_csv('src\\data\\landmark_data\\validation_topics_in_embedding_order.csv')
+    item_polarity = pd.read_csv('src\\data\\auto_encoder_training\\validation_data\\validation_partisan_labels.csv')
 
-user_classes = pd.read_csv('src\\data\\user_space\\user_space_matrix_with_topics.csv').iloc[:]['class']
+    user_classes = pd.read_csv('src\\data\\user_space\\user_space_matrix_with_topics.csv').iloc[:]['class']
 
-user_item_matrix = pd.read_csv('src\\data\\CF\\user_item_matrix.csv').drop(columns=['Unnamed: 0'])
+    user_item_matrix = pd.read_csv('src\\data\\CF\\user_item_matrix.csv').drop(columns=['Unnamed: 0'])
 
-predicted_rating_matrix = pd.read_csv('src\\data\\predicted_rating_matrix.csv').to_numpy()
+    predicted_rating_matrix = pd.read_csv('src\\data\\predicted_rating_matrix.csv').to_numpy()
 
-item_list = user_item_matrix.columns
+    item_list = user_item_matrix.columns
 
-random_partisan_score = [0,0,0]
-chosen_partisan_score = [0, 0, 0]
+    random_partisan_score = [0,0,0]
+    chosen_partisan_score = [0, 0, 0]
 
-random_utility_across_classes = [0,0,0,0,0,0,0,0,0]
-chosen_utility_across_classes = [0,0,0,0,0,0,0,0,0]
+    random_utility_across_classes = [0,0,0,0,0,0,0,0,0]
+    chosen_utility_across_classes = [0,0,0,0,0,0,0,0,0]
 
-classes = ['bystanders', 'core conserv', 'country first conserv', 'devout and diverse', 'disaffected democrats', 'market skeptic repub', 'new era enterprisers', 'oppty democrats', 'solid liberas']
-class_map = {'bystanders': 0, 'core conserv': 1, 'country first conserv': 2, 'devout and diverse': 3, 'disaffected democrats': 4, 'market skeptic repub': 5, 'new era enterprisers': 6, 'oppty democrats': 7, 'solid liberas': 8}
-number_of_users = [49, 153, 63, 69, 108, 116, 116, 133, 193]
+    classes = ['bystanders', 'core conserv', 'country first conserv', 'devout and diverse', 'disaffected democrats', 'market skeptic repub', 'new era enterprisers', 'oppty democrats', 'solid liberas']
+    class_map = {'bystanders': 0, 'core conserv': 1, 'country first conserv': 2, 'devout and diverse': 3, 'disaffected democrats': 4, 'market skeptic repub': 5, 'new era enterprisers': 6, 'oppty democrats': 7, 'solid liberas': 8}
+    number_of_users = [49, 153, 63, 69, 108, 116, 116, 133, 193]
 
-t = pd.read_pickle('1000users.pkl')
+    t = pd.read_pickle('1000users.pkl')
 
 
-users_choice = np.empty((1000, 70))
-q = 0
-for i in range(len(classes)):
-    cl = classes[i]
-    for j in range(number_of_users[i]):
-        users_choice[q] = np.array(t[cl][j]).flatten()
-        q+=1
+    users_choice = np.empty((1000, 70))
+    q = 0
+    for i in range(len(classes)):
+        cl = classes[i]
+        for j in range(number_of_users[i]):
+            users_choice[q] = np.array(t[cl][j]).flatten()
+            q+=1
 
-for u in range(user_item_matrix.shape[0]):
-    
-    row = user_item_matrix.iloc[u]
-    valid_mask = (row > 0)
-    filtered_row = row[~valid_mask]
-    available_indices = np.where(valid_mask)[0]
-    
-    c = user_classes.iloc[u]
-    
-    
-    predicted_row = predicted_rating_matrix[u]
-    filtered_pred = predicted_row[available_indices]
-
-    ## top M
-    retain_ind = np.argsort(-filtered_pred)[:M]
-    retain_val = filtered_pred[retain_ind]
-    
-    ## M random
-    rand_items = available_indices[np.random.choice(len(available_indices), M, replace=False)]
-    
-    chosen_items = available_indices[retain_ind]
-    
-    
-    # retrieve polarity + gauge utility
-    rand_ids = item_list[rand_items]
-    chosen_ids = item_list[chosen_items]
-    
-    u_choice = users_choice[u]
-    
-    for i in range(M):
-        r_id = rand_ids[i]
-        c_id = chosen_ids[i]
+    for u in range(user_item_matrix.shape[0]):
         
-        r_label = item_polarity.loc[item_polarity['article_id'] == int(r_id)]['source_partisan_score'].values[0]
-        c_label = item_polarity.loc[item_polarity['article_id'] == int(c_id)]['source_partisan_score'].values[0]
+        row = user_item_matrix.iloc[u]
+        valid_mask = (row > 0)
+        filtered_row = row[~valid_mask]
+        available_indices = np.where(valid_mask)[0]
         
-        if r_label <= -1:
-            random_partisan_score[0] += 1
-        elif r_label >= 1:
-            random_partisan_score[2] += 1
-        else:
-            random_partisan_score[1] += 1
+        c = user_classes.iloc[u]
+        
+        
+        predicted_row = predicted_rating_matrix[u]
+        filtered_pred = predicted_row[available_indices]
+
+        ## top M
+        retain_ind = np.argsort(-filtered_pred)[:M]
+        retain_val = filtered_pred[retain_ind]
+        
+        ## M random
+        rand_items = available_indices[np.random.choice(len(available_indices), M, replace=False)]
+        
+        chosen_items = available_indices[retain_ind]
+        
+        
+        # retrieve polarity + gauge utility
+        rand_ids = item_list[rand_items]
+        chosen_ids = item_list[chosen_items]
+        
+        u_choice = users_choice[u]
+        
+        for i in range(M):
+            r_id = rand_ids[i]
+            c_id = chosen_ids[i]
             
-        if c_label <= -1:
-            chosen_partisan_score[0] += 1
-        elif c_label >= 1:
-            chosen_partisan_score[2] += 1
-        else:
-            chosen_partisan_score[1] += 1
+            r_label = item_polarity.loc[item_polarity['article_id'] == int(r_id)]['source_partisan_score'].values[0]
+            c_label = item_polarity.loc[item_polarity['article_id'] == int(c_id)]['source_partisan_score'].values[0]
+            
+            if r_label <= -1:
+                random_partisan_score[0] += 1
+            elif r_label >= 1:
+                random_partisan_score[2] += 1
+            else:
+                random_partisan_score[1] += 1
+                
+            if c_label <= -1:
+                chosen_partisan_score[0] += 1
+            elif c_label >= 1:
+                chosen_partisan_score[2] += 1
+            else:
+                chosen_partisan_score[1] += 1
+            
+            r_topics = ast.literal_eval(item_topic.loc[item_topic['article_id'] == int(r_id)]['topical_vector'].values[0])
+            c_topics = ast.literal_eval(item_topic.loc[item_topic['article_id'] == int(c_id)]['topical_vector'].values[0])
+            
+            r_utility = user_interaction_score(u_choice, r_topics)
+            c_utility = user_interaction_score(u_choice, c_topics)
+            
+            idx = class_map[c]
+            
+            random_utility_across_classes[idx] += r_utility
+            chosen_utility_across_classes[idx] += c_utility
+            
         
-        r_topics = ast.literal_eval(item_topic.loc[item_topic['article_id'] == int(r_id)]['topical_vector'].values[0])
-        c_topics = ast.literal_eval(item_topic.loc[item_topic['article_id'] == int(c_id)]['topical_vector'].values[0])
-        
-        r_utility = user_interaction_score(u_choice, r_topics)
-        c_utility = user_interaction_score(u_choice, c_topics)
-        
-        idx = class_map[c]
-        
-        random_utility_across_classes[idx] += r_utility
-        chosen_utility_across_classes[idx] += c_utility
-        
-    
-        
-random_performance = np.divide(random_utility_across_classes, np.multiply(M, number_of_users))
-model_performance = np.divide(chosen_utility_across_classes, np.multiply(M, number_of_users))
+            
+    random_performance = np.divide(random_utility_across_classes, np.multiply(M, number_of_users))
+    model_performance = np.divide(chosen_utility_across_classes, np.multiply(M, number_of_users))
 
-print(f'Model performance across classes: {model_performance}, with topic distribution: {chosen_partisan_score}')
-print(f'Random performance across classes: {random_performance}, with topic distribution: {random_partisan_score}')
+    print(f'Model performance across classes: {model_performance}, with topic distribution: {chosen_partisan_score}')
+    print(f'Random performance across classes: {random_performance}, with topic distribution: {random_partisan_score}')
     
+    
+if __name__ == '__main__':
+    create_predicted_rating_matrix()
+    evaluate()
