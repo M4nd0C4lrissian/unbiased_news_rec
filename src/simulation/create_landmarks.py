@@ -92,7 +92,7 @@ if __name__ == '__main__':
     num_batches = 16
 
     batch_size = 1000
-    num_pos_samples = 1
+    num_pos_samples = 5
 
     source_path = "D:\Bert-Embeddings\\training_data\\"
     type_landmarks = np.zeros((9, encoder_output_dim), dtype = np.float64)
@@ -120,7 +120,7 @@ if __name__ == '__main__':
                     did_interact, utility_score = user_interaction(class_utility[type], topic_vector)
 
                     # if did_interact:
-                    if utility_score >= 0.7:
+                    if did_interact:
                     
                         print(f'User interacted with a utility score of {utility_score}')
 

@@ -6,7 +6,7 @@ from torch.optim.lr_scheduler import LambdaLR
 
 from torch.utils.data import DataLoader
 
-from my_work.custom_article_embedding_dataset import CustomArticleEmbeddingDataset as CD
+from custom_article_embedding_dataset import CustomArticleEmbeddingDataset as CD
 
 # # Encoder with residual connections
 # ## make model bigger
@@ -146,15 +146,50 @@ def diversity_loss(embeddings):
     loss = torch.mean(cosine_sim) - torch.diag(cosine_sim).mean()
     return loss
 
+def orthogonality_loss_with_labels(embeddings, labels, num_classes):
+    """
+    Computes orthogonality loss across embeddings grouped by labels.
+    
+    Args:
+    - embeddings: Tensor of shape (batch_size, embedding_dim).
+    - labels: Tensor of shape (batch_size,) containing topic labels (0, 1, ..., num_classes - 1).
+    - num_classes: Integer specifying the number of topic classes.
+    
+    Returns:
+    - loss: Scalar tensor, the computed orthogonality loss.
+    """
+    loss = 0.0
+    device = embeddings.device
+    
+    # Split embeddings by class
+    for i in range(num_classes):
+        for j in range(i + 1, num_classes):
+            # Get embeddings for class i and class j
+            embeddings_i = embeddings[labels == i]
+            embeddings_j = embeddings[labels == j]
+            
+            if embeddings_i.size(0) == 0 or embeddings_j.size(0) == 0:
+                # Skip if there are no embeddings for a class
+                continue
+            
+            # Compute cross-orthogonality loss
+            cross_gram_matrix = torch.mm(embeddings_i, embeddings_j.T)  # Shape: (num_i, num_j)
+            loss += (cross_gram_matrix ** 2).sum()  # Encourage dot products to be near zero
+    
+    return loss
+
 # Losses
 def compute_losses(c_j, encoder_output, polarity_decoded, polarity_free_decoded, polarity_pred, polarity_free_pred, polarity_labels):
     # Reconstruction loss
-    reconstruction_loss = F.mse_loss(
+    reconstruction_loss = 0.5 * F.mse_loss(
         torch.cat((polarity_decoded, polarity_free_decoded), dim=-1), c_j
     )
     
-    lambda_diversity = 1
+    lambda_diversity = 0.1
     embedding_diversity_loss = lambda_diversity * diversity_loss(torch.cat((polarity_decoded, polarity_free_decoded), dim=0))
+    
+    ortho_lambda_diversity = 0.00001
+    encoded_orthogonality_loss = ortho_lambda_diversity * orthogonality_loss_with_labels(c_j, polarity_labels, 3)
 
     # Classification loss
     logits = polarity_pred.float()
@@ -170,7 +205,7 @@ def compute_losses(c_j, encoder_output, polarity_decoded, polarity_free_decoded,
     confusion_loss = 1 / criterion(logits, targets)
 
 
-    return reconstruction_loss, classification_loss, confusion_loss, embedding_diversity_loss
+    return reconstruction_loss, classification_loss, confusion_loss, embedding_diversity_loss, encoded_orthogonality_loss
 
 # Training loop
 def train(model, scheduler, dataset, val_dataset, optimizer, path_to_data, embedding_batch_num, num_epochs=10):
@@ -211,11 +246,11 @@ def train(model, scheduler, dataset, val_dataset, optimizer, path_to_data, embed
             
 
             # Loss computation
-            recon_loss, class_loss, conf_loss, embedding_diversity_loss = compute_losses(
+            recon_loss, class_loss, conf_loss, embedding_diversity_loss, encoded_orthogonality_loss = compute_losses(
                 c_j, encoded, polarity_decoded, polarity_free_decoded, polarity_pred, polarity_free_pred, polarity_labels
             )
 
-            total_loss = recon_loss + 3 * class_loss + conf_loss + embedding_diversity_loss
+            total_loss = recon_loss + 3 * class_loss + conf_loss + embedding_diversity_loss + encoded_orthogonality_loss
             total_train_loss += total_loss.item()
             # print(f"Reconstruction loss: {recon_loss}")
             # print(f"Classification loss: {class_loss}")

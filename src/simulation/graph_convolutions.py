@@ -199,7 +199,7 @@ def get_predicted_embedding(x_hat, M, user_item_matrix, encoder_output_dim, part
     item_ids = item_list[original_indices.cpu().numpy()]  # Assuming item_list is not a tensor
     combined_embedding = torch.zeros(encoder_output_dim, dtype=torch.float64, device=x_hat.device)
     
-    
+    total_score = 0
     for i in range(len(item_ids)):
         
         id = item_ids[i]
@@ -222,8 +222,9 @@ def get_predicted_embedding(x_hat, M, user_item_matrix, encoder_output_dim, part
         
         aggregated_score = b[original_indices[i]]
         combined_embedding += aggregated_score * polarity_free_rep[0]
+        total_score += aggregated_score
             
-    return combined_embedding
+    return combined_embedding / torch.tensor(total_score)
 
 def get_predicted_embedding_batched(x_hat_batch, M, user_item_matrix, encoder_output_dim, partisan_labels, val_data, encoder, polarity_free_decoder, device='cuda', batch_size=100):
     item_list = user_item_matrix.columns
@@ -308,8 +309,10 @@ def process_data(data):
 
 def __train_weights(matrix, B, M, true_interest_model, partisan_labels, val_data, encoder, polarity_free_decoder, encoder_output_dim = 128, k=10, f=3, lr=0.0001, epochs=100, batch_size = 100):
     
-    h = torch.nn.Parameter(torch.rand(f, 1, requires_grad=True, dtype=torch.float64, device='cuda' if torch.cuda.is_available() else 'cpu'))
-
+    sigmoid = torch.nn.Sigmoid()
+    temp = (torch.nn.Parameter(torch.rand(f, 1, requires_grad=True, dtype=torch.float64, device='cuda' if torch.cuda.is_available() else 'cpu')))
+    h = sigmoid(temp)
+    
     optimizer = optim.Adam([h], lr=lr)
     
     Bi = normalized_bottom_k_with_bias(B, k)
@@ -522,16 +525,16 @@ if __name__ == '__main__':
 
     ##hacky
     B = user_correlation_matrix / 1000
-    M = 5
+    M = 8
 
     print(B)
 
     # user_item_matrix = user_item_matrix
-    f = 5
+    f = 3
     print('starting training')
-    k = 100
+    k = 10
     lr = 0.001
-    epochs = 25
+    epochs = 15
 
     trained_h, loss_over_time = train_weights(user_item_matrix, B, M, true_interest_model, partisan_labels, val_dataset, encoder, polarity_free_decoder, encoder_output_dim=128, k = k, f = f, lr = lr, epochs = epochs)
 

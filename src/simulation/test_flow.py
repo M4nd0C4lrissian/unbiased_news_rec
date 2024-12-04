@@ -53,7 +53,7 @@ def create_predicted_rating_matrix():
 
     f = 5
     ## was 100 in training - I did not realize 
-    k = 100
+    k = 10
 
     Bi = GC.normalized_bottom_k_with_bias(B, k)
     B_i = GC.construct_convolutions_with_user_check(Bi, f)
@@ -61,6 +61,8 @@ def create_predicted_rating_matrix():
    
 
     h = torch.tensor(pd.read_csv('src\\data\\CF\\trained_h_5_epoch_4.csv')['0'].to_numpy(), dtype=torch.float64, device='cuda' if torch.cuda.is_available() else 'cpu')
+    s = torch.nn.Sigmoid()
+    h = s(h)
 
     item_topic = pd.read_csv('src\\data\\landmark_data\\validation_topics_in_embedding_order.csv')
     item_polarity = pd.read_csv('src\\data\\auto_encoder_training\\validation_data\\validation_partisan_labels.csv')
@@ -119,7 +121,7 @@ def create_predicted_rating_matrix():
 ## do the same for k random items, and compare 
 
 def evaluate():
-    M = 5
+    M = 8
     item_topic = pd.read_csv('src\\data\\landmark_data\\validation_topics_in_embedding_order.csv')
     item_polarity = pd.read_csv('src\\data\\auto_encoder_training\\validation_data\\validation_partisan_labels.csv')
 
@@ -188,16 +190,16 @@ def evaluate():
             r_label = item_polarity.loc[item_polarity['article_id'] == int(r_id)]['source_partisan_score'].values[0]
             c_label = item_polarity.loc[item_polarity['article_id'] == int(c_id)]['source_partisan_score'].values[0]
             
-            if r_label <= -1:
+            if r_label == 0:
                 random_partisan_score[0] += 1
-            elif r_label >= 1:
+            elif r_label == 2:
                 random_partisan_score[2] += 1
             else:
                 random_partisan_score[1] += 1
                 
-            if c_label <= -1:
+            if c_label == 0:
                 chosen_partisan_score[0] += 1
-            elif c_label >= 1:
+            elif c_label == 2:
                 chosen_partisan_score[2] += 1
             else:
                 chosen_partisan_score[1] += 1
@@ -221,7 +223,7 @@ def evaluate():
     print(f'Model performance across classes: {model_performance}, with topic distribution: {chosen_partisan_score}')
     print(f'Random performance across classes: {random_performance}, with topic distribution: {random_partisan_score}')
     
-    
+##not really testing recommendation diversity at the individual level - should try this
 if __name__ == '__main__':
     create_predicted_rating_matrix()
     evaluate()
