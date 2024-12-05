@@ -49,18 +49,18 @@ def create_predicted_rating_matrix():
  
     correlation_matrix = pd.read_csv('src\\data\\user_space\\correlation_matrix.csv').drop(columns=['Unnamed: 0']).to_numpy()
     np.fill_diagonal(correlation_matrix, 0)
-    B = correlation_matrix / 1000
+    B = correlation_matrix
 
-    f = 5
+    f = 7
     ## was 100 in training - I did not realize 
-    k = 10
+    k = 50
 
     Bi = GC.normalized_bottom_k_with_bias(B, k)
     B_i = GC.construct_convolutions_with_user_check(Bi, f)
 
    
 
-    h = torch.tensor(pd.read_csv('src\\data\\CF\\trained_h_5_epoch_4.csv')['0'].to_numpy(), dtype=torch.float64, device='cuda' if torch.cuda.is_available() else 'cpu')
+    h = torch.tensor(pd.read_csv('src\\data\\CF\\trained_h_7_final.csv')['0'].to_numpy(), dtype=torch.float64, device='cuda' if torch.cuda.is_available() else 'cpu')
     s = torch.nn.Sigmoid()
     h = s(h)
 
@@ -121,7 +121,7 @@ def create_predicted_rating_matrix():
 ## do the same for k random items, and compare 
 
 def evaluate():
-    M = 8
+    M = 5
     item_topic = pd.read_csv('src\\data\\landmark_data\\validation_topics_in_embedding_order.csv')
     item_polarity = pd.read_csv('src\\data\\auto_encoder_training\\validation_data\\validation_partisan_labels.csv')
 
@@ -147,6 +147,16 @@ def evaluate():
 
 
     users_choice = np.empty((1000, 70))
+    
+    
+    ##make a 9 by 5 by 14 array 
+    
+    recommendation_stats = None
+    
+    ## topic diversity?
+    
+    
+    
     q = 0
     for i in range(len(classes)):
         cl = classes[i]
@@ -157,8 +167,8 @@ def evaluate():
     for u in range(user_item_matrix.shape[0]):
         
         row = user_item_matrix.iloc[u]
-        valid_mask = (row > 0)
-        filtered_row = row[~valid_mask]
+        valid_mask = (row == 0)
+        filtered_row = row[valid_mask]
         available_indices = np.where(valid_mask)[0]
         
         c = user_classes.iloc[u]
@@ -168,7 +178,7 @@ def evaluate():
         filtered_pred = predicted_row[available_indices]
 
         ## top M
-        retain_ind = np.argsort(-filtered_pred)[:M]
+        retain_ind = np.argsort(filtered_pred)[:M]
         retain_val = filtered_pred[retain_ind]
         
         ## M random
@@ -220,8 +230,8 @@ def evaluate():
     random_performance = np.divide(random_utility_across_classes, np.multiply(M, number_of_users))
     model_performance = np.divide(chosen_utility_across_classes, np.multiply(M, number_of_users))
 
-    print(f'Model performance across classes: {model_performance}, with topic distribution: {chosen_partisan_score}')
-    print(f'Random performance across classes: {random_performance}, with topic distribution: {random_partisan_score}')
+    print(f'Model performance across classes: {model_performance}, with bias distribution: {chosen_partisan_score}')
+    print(f'Random performance across classes: {random_performance}, with bias distribution: {random_partisan_score}')
     
 ##not really testing recommendation diversity at the individual level - should try this
 if __name__ == '__main__':

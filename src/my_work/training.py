@@ -6,37 +6,7 @@ from torch.optim.lr_scheduler import LambdaLR
 
 from torch.utils.data import DataLoader
 
-from custom_article_embedding_dataset import CustomArticleEmbeddingDataset as CD
-
-# # Encoder with residual connections
-# ## make model bigger
-# class Encoder(nn.Module):
-#     def __init__(self, bert_dim, intermediate_dim, final_dim):
-#         super(Encoder, self).__init__()
-#         self.conv1d = nn.Conv1d(in_channels=768, out_channels=intermediate_dim, kernel_size=1)
-#         self.fc1 = nn.Linear(intermediate_dim, intermediate_dim)
-#         self.fc2 = nn.Linear(intermediate_dim * 2, intermediate_dim)
-#         self.fc3 = nn.Linear(intermediate_dim * 2, final_dim)  # Residual connection
-#         self.final_activation = nn.Sigmoid()
-
-#     def forward(self, x):
-#         # x shape: (batch_size, T, 2 * bert_dim)
-#         # Transpose for Conv1d: (batch_size, 2 * bert_dim, T)
-#         ##x = x.transpose(1, 2)
-        
-#         # Apply Conv1d
-#         x = self.conv1d(x)  # (batch_size, intermediate_dim, T)
-#         x = F.relu(x)
-        
-#         # Pooling to aggregate sequence info (mean pooling)
-#         x = torch.mean(x, dim=-1)  # (batch_size, intermediate_dim)
-        
-#         # Fully connected layers with residual connections
-#         x1 = F.leaky_relu(self.fc1(x), negative_slope=0.1)  # (batch_size, intermediate_dim)
-#         x2 = F.leaky_relu(self.fc2(torch.cat((x, x1), dim=-1)), negative_slope=0.1)
-#         x3 = F.leaky_relu(self.fc3(torch.cat((x, x2), dim=-1)), negative_slope=0.1)  # (batch_size, final_dim)
-#         x4 = self.final_activation(x3)  # (batch_size, final_dim)
-#         return x4, x
+from my_work.custom_article_embedding_dataset import CustomArticleEmbeddingDataset as CD
 
 class Encoder(nn.Module):
     def __init__(self, bert_dim, intermediate_dim, final_dim, num_heads=8, dropout=0.1):
@@ -88,6 +58,10 @@ class Decoder(nn.Module):
         self.fc1 = nn.Linear(input_dim, intermediate_dim)
         self.fc2 = nn.Linear(intermediate_dim + input_dim, intermediate_dim)
         self.fc3 = nn.Linear(intermediate_dim + input_dim, output_dim)
+        
+        nn.init.uniform_(self.fc1.weight, a=-2.0, b=2.0)
+        nn.init.uniform_(self.fc2.weight, a=-2.0, b=2.0)
+        nn.init.uniform_(self.fc3.weight, a=-2.0, b=2.0)
 
     def forward(self, x):
         x1 = F.leaky_relu(self.fc1(x), negative_slope=0.1)
@@ -146,27 +120,32 @@ def diversity_loss(embeddings):
     loss = torch.mean(cosine_sim) - torch.diag(cosine_sim).mean()
     return loss
 
-def orthogonality_loss_with_labels(embeddings, labels, num_classes):
+def orthogonality_loss_with_labels(embeddings, labels, num_classes, target_norm=1.0, weight_magnitude=0.1):
     """
-    Computes orthogonality loss across embeddings grouped by labels.
+    Computes orthogonality loss across embeddings grouped by labels, with normalization and magnitude regularization.
     
     Args:
     - embeddings: Tensor of shape (batch_size, embedding_dim).
     - labels: Tensor of shape (batch_size,) containing topic labels (0, 1, ..., num_classes - 1).
     - num_classes: Integer specifying the number of topic classes.
+    - target_norm: Target magnitude for embeddings (default: 1.0).
+    - weight_magnitude: Weight for the magnitude regularization term (default: 0.1).
     
     Returns:
-    - loss: Scalar tensor, the computed orthogonality loss.
+    - loss: Scalar tensor, the computed total loss.
     """
     loss = 0.0
     device = embeddings.device
+    
+    # Normalize embeddings to unit length
+    normalized_embeddings = F.normalize(embeddings, p=2, dim=1)
     
     # Split embeddings by class
     for i in range(num_classes):
         for j in range(i + 1, num_classes):
             # Get embeddings for class i and class j
-            embeddings_i = embeddings[labels == i]
-            embeddings_j = embeddings[labels == j]
+            embeddings_i = normalized_embeddings[labels == i]
+            embeddings_j = normalized_embeddings[labels == j]
             
             if embeddings_i.size(0) == 0 or embeddings_j.size(0) == 0:
                 # Skip if there are no embeddings for a class
@@ -176,7 +155,13 @@ def orthogonality_loss_with_labels(embeddings, labels, num_classes):
             cross_gram_matrix = torch.mm(embeddings_i, embeddings_j.T)  # Shape: (num_i, num_j)
             loss += (cross_gram_matrix ** 2).sum()  # Encourage dot products to be near zero
     
-    return loss
+    # Add magnitude regularization term
+    norms = torch.norm(embeddings, dim=1)
+    magnitude_loss = ((norms - target_norm) ** 2).mean()
+    
+    # Total loss: orthogonality loss + magnitude regularization
+    total_loss = loss + weight_magnitude * magnitude_loss
+    return total_loss
 
 # Losses
 def compute_losses(c_j, encoder_output, polarity_decoded, polarity_free_decoded, polarity_pred, polarity_free_pred, polarity_labels):
@@ -189,7 +174,7 @@ def compute_losses(c_j, encoder_output, polarity_decoded, polarity_free_decoded,
     embedding_diversity_loss = lambda_diversity * diversity_loss(torch.cat((polarity_decoded, polarity_free_decoded), dim=0))
     
     ortho_lambda_diversity = 0.00001
-    encoded_orthogonality_loss = ortho_lambda_diversity * orthogonality_loss_with_labels(c_j, polarity_labels, 3)
+    encoded_orthogonality_loss = 1
 
     # Classification loss
     logits = polarity_pred.float()
@@ -250,11 +235,13 @@ def train(model, scheduler, dataset, val_dataset, optimizer, path_to_data, embed
                 c_j, encoded, polarity_decoded, polarity_free_decoded, polarity_pred, polarity_free_pred, polarity_labels
             )
 
-            total_loss = recon_loss + 3 * class_loss + conf_loss + embedding_diversity_loss + encoded_orthogonality_loss
+            ##increase weight of confusion loss?
+            total_loss = recon_loss + class_loss + conf_loss
+            
             total_train_loss += total_loss.item()
-            # print(f"Reconstruction loss: {recon_loss}")
-            # print(f"Classification loss: {class_loss}")
-            # print(f"Confusion loss: {conf_loss}")
+            print(f"Reconstruction loss: {recon_loss}")
+            print(f"Classification loss: {class_loss}")
+            print(f"Confusion loss: {conf_loss}")
 
             # Backward pass
             total_loss.backward()
@@ -308,11 +295,14 @@ if __name__ == '__main__':
     intermediate_dim = 256
     encoder_output_dim = 128
     num_classes = 3  # {-1, 0, 1}
-
-    model = DualDecoderModel(bert_dim, intermediate_dim, encoder_output_dim, num_classes)
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    
+    
+    
+    encoder = Encoder(bert_dim, intermediate_dim, encoder_output_dim)
+    epochs = 3
+    
     embedding_batch_num = 1000
-
+    
     labels_file = "src\data\\auto_encoder_training\\training_data\\partisan_labels.csv"
     
     path_to_data = "D:\Bert-Embeddings\\training_data\\"
@@ -322,6 +312,48 @@ if __name__ == '__main__':
 
     dataset = CD(labels_file, [text_embedding_file], [title_embedding_file], [0, embedding_batch_num])
     
+    data_loader = DataLoader(dataset, batch_size= embedding_batch_num // 20, shuffle=True)
+    optimizer = optim.Adam(encoder.parameters(), lr=0.001)
+    
+    for epoch in range(epochs):
+        total_loss = 0.0
+        for batch_idx, (bert1, bert2, polarity_labels) in enumerate(data_loader):
+            # inputs, labels = inputs.to(device), labels.to(device)
+            
+            concatenated = torch.cat((bert1, bert2), dim=-1)
+            # Forward pass
+            embeddings, c_j = encoder(concatenated)
+            
+            # Compute the combined loss
+            loss = orthogonality_loss_with_labels(c_j, polarity_labels, 3, weight_magnitude=0.1, target_norm=1.0)
+            
+            # Backpropagation and optimization
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            
+            total_loss += loss.item()
+    
+        print(f"Epoch {epoch + 1}/{epochs}, Loss: {total_loss:.4f}")
+    
+    for param in encoder.self_attention.parameters():
+        print('Here 1')
+        param.requires_grad = False
+    
+    for param in encoder.fcj.parameters():
+        print('Here 2')
+        param.requires_grad = False
+
+    model = DualDecoderModel(bert_dim, intermediate_dim, encoder_output_dim, num_classes)
+    
+    model.encoder = encoder
+    
+    optimizer = optim.Adam(
+        filter(lambda p: p.requires_grad, model.parameters()), 
+        lr=0.001
+    )
+
+
     # val_path = "D:\Bert-Embeddings\\validation_data\\"
     
     
@@ -349,7 +381,7 @@ if __name__ == '__main__':
     scheduler = LambdaLR(optimizer, lr_lambda=lr_schedule)
 
     val_dataset = None
-
+    
     # Assuming `data_loader` is a PyTorch DataLoader with batches of (bert1, bert2, polarity_labels)
     train(model, scheduler, dataset, val_dataset, optimizer, path_to_data, embedding_batch_num, num_epochs=32)
     torch.save(model.state_dict, 'src\my_work\models\\full_model.pt')

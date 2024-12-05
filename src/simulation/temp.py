@@ -34,7 +34,7 @@ from collections import defaultdict
 selection_count = defaultdict(int)
 index_set = set()
 
-def normalized_bottom_k_with_bias(Bi, k, alpha=0.4):
+def normalized_bottom_k_with_bias(Bi, k, alpha=0.45):
     """
     Probabilistically adjust selection to promote fuller coverage of users.
     
@@ -94,51 +94,6 @@ def normalized_bottom_k_with_bias(Bi, k, alpha=0.4):
 
     return norm_B
 
-# index_set = set()
-
-def normalized_bottom_k(Bi, k):
-    
-    norm_B = np.zeros_like(Bi, dtype=np.float64)
-    
-    for u in range(Bi.shape[0]):
-        row = Bi[u]
-
-        # Filter out NaNs and negative values
-        valid_mask = ~np.isnan(row) & (row > 0)
-        filtered_row = row[valid_mask]
-
-        # Check if there are enough valid values to select
-        if len(filtered_row) == 0:
-            norm_B[u] = np.zeros_like(row)
-            print(f'user: {u} has no viable users')
-            continue
-
-        # Get indices of the bottom-k values
-    
-        retain_ind = np.argsort(filtered_row)[:k]
-        for ind in retain_ind: 
-            index_set.add(ind)
-        retain_val = filtered_row[retain_ind]
-
-        # Calculate the sum of the retained values for normalization
-        s = np.sum(retain_val)
-        if s == 0:
-            norm_B[u] = np.zeros_like(row)
-            print('BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB')
-            continue
-
-        # Create a new row with only the top-k values retained
-        b = np.zeros_like(row)
-        original_indices = np.where(valid_mask)[0][retain_ind]
-        b[original_indices] = 1 - retain_val
-
-        # Normalize to ensure the sum is between 0 and 1
-        b = b / s
-
-        norm_B[u] = b
-        
-    return norm_B
-
 def construct_convolutions_with_user_check(Bi, f):
     """
     Construct graph convolution tensors, log sparsity trends, and check for users with no non-zero values.
@@ -196,24 +151,7 @@ def construct_convolutions_with_user_check(Bi, f):
     # plt.show()
 
     return tensor
-        
 
-def construct_convolutions(Bi, f):
-    # Convert NumPy array to a PyTorch tensor
-    Bi_torch = torch.tensor(Bi, dtype=torch.float64, device='cuda' if torch.cuda.is_available() else 'cpu')
-
-    num_rows, num_cols = Bi_torch.shape
-    # Initialize a PyTorch tensor to store the results
-    tensor = torch.zeros((f, num_rows, num_cols), device=Bi_torch.device, dtype=torch.float64)
-
-    # Set the first layer to Bi
-    tensor[0] = Bi_torch
-    for i in range(1, f):
-        # Perform batched matrix multiplication across the third dimension
-        tensor[i] = torch.matmul(tensor[i-1], Bi_torch)
-        tensor[i] = torch.nan_to_num(tensor[i], nan=0.0)
-
-    return tensor
 
 def weighted_graph_convolution(x_i, Bs, h):
 
@@ -228,6 +166,8 @@ def weighted_graph_convolution(x_i, Bs, h):
     Returns:
     - A 1 x U shifted and weighted rating vector.
   """
+  if torch.isnan(h).any() or torch.isinf(h).any():
+    print("NaN or Inf detected in h!")
   x_shifted = torch.stack([torch.matmul(x_i, Bs[k]) for k in range(len(h))])  # shape: (k, U)
 
   weighted_sum = torch.matmul(h.T, x_shifted)  # shape: (1, U)
@@ -243,11 +183,11 @@ def weighted_graph_convolution(x_i, Bs, h):
 
 
 ## a few things - need to see where the gradient is falling off (might be fine) AND need to pass into this user vectors, right now we're being passed item rating vectors
-def get_predicted_embedding(x_hat, M, user_item_matrix, encoder_output_dim, partisan_labels, val_data, encoder, polarity_free_decoder, batch_size = 1000):
+def get_predicted_embedding(x_hat, M, user_item_matrix, encoder_output_dim, partisan_labels, val_data, encoder, polarity_free_decoder):
     item_list = user_item_matrix.columns
 
     # Mask invalid entries
-    valid_mask = ~torch.isnan(x_hat)
+    valid_mask = ~torch.isnan(x_hat) & (x_hat > 0)
     filtered_row = x_hat[valid_mask]
 
     # Get indices of the top-M values
@@ -283,10 +223,84 @@ def get_predicted_embedding(x_hat, M, user_item_matrix, encoder_output_dim, part
         polarity_free_rep = polarity_free_decoder(x2)
         
         aggregated_score = b[original_indices[i]]
-        total_score += aggregated_score
         combined_embedding += aggregated_score * polarity_free_rep[0]
+        total_score += aggregated_score
             
     return combined_embedding / total_score
+
+def get_predicted_embedding_batched(x_hat_batch, M, user_item_matrix, encoder_output_dim, partisan_labels, val_data, encoder, polarity_free_decoder, device='cuda', batch_size=100):
+    item_list = user_item_matrix.columns
+    batch_size_users = x_hat_batch.size(0)
+
+    # Mask invalid entries
+    valid_mask_batch = ~torch.isnan(x_hat_batch) & (x_hat_batch > 0)
+    combined_embeddings = torch.zeros(batch_size_users, encoder_output_dim, dtype=torch.float64, device=device)
+
+    all_items, all_scores = [], []
+
+    # Collect top-M items for each user in the batch
+    for i in range(batch_size_users):
+        x_hat = x_hat_batch[i]
+        valid_mask = valid_mask_batch[i]
+
+        # Get top-M values and their indices
+        filtered_row = x_hat[valid_mask]
+        if len(filtered_row) < M:
+            print(f"too few for user {i}, only {len(filtered_row)} found but need {M}")
+            continue
+
+        top_values, retain_ind = torch.topk(filtered_row, min(M, len(filtered_row)))
+        original_indices = torch.nonzero(valid_mask, as_tuple=True)[0][retain_ind]
+
+        item_ids = item_list[original_indices.cpu().numpy()]
+        all_items.extend(item_ids)
+        all_scores.extend(top_values.tolist())
+
+    # Batch process items through the encoder and decoder
+    embeddings = []
+    # for batch_start in range(0, len(all_items), batch_size):
+    #     batch_end = min(batch_start + batch_size, len(all_items))
+    #     batch_items = all_items[batch_start:batch_end]
+    
+    ##loading data
+    titles, texts, scores = [], [], []
+    for i in range(len(all_items)):
+        item_id = all_items[i]
+        
+        raw_index = int(partisan_labels.loc[partisan_labels["article_id"] == int(item_id)].index[0])
+        point = val_data.__getitem__(raw_index)
+        titles.append(point[0].to(device))
+        texts.append(point[1].to(device))
+
+    titles = torch.stack(titles)
+    texts = torch.stack(texts)
+    scores = torch.tensor(all_scores, dtype=torch.float64, device=device)
+
+    # Encoder and decoder predictions
+    x2, _ = encoder(torch.cat((titles, texts), dim=-1))
+    polarity_free_reps = polarity_free_decoder(x2)
+    
+    # embeddings.append((polarity_free_reps * scores).sum(dim=0))
+    
+    for i in range(len(scores)):
+        embeddings.append((scores[i] * polarity_free_reps[i]))
+
+    embeddings = torch.cat(embeddings, dim=0)
+
+    # Aggregate embeddings for each user in the batch
+    offset = 0
+    for i in range(batch_size_users):
+        x_hat = x_hat_batch[i]
+        valid_mask = valid_mask_batch[i]
+        filtered_row = x_hat[valid_mask]
+        num_items = min(M, len(filtered_row))
+
+        total_score = scores[offset: offset + num_items].sum(dim=0)
+        combined_embeddings[i] = embeddings[offset:offset + num_items].sum(dim=0) / total_score
+        
+        offset += num_items
+
+    return combined_embeddings
 
 def process_data(data):
     data = data.strip("[]")
@@ -295,19 +309,113 @@ def process_data(data):
     
     return numbers
 
-def train_weights(matrix, B, M, true_interest_model, partisan_labels, val_data, encoder, polarity_free_decoder, encoder_output_dim = 128, k=10, f=3, lr=0.01, epochs=100):
+def __train_weights(matrix, B, M, true_interest_model, partisan_labels, val_data, encoder, polarity_free_decoder, encoder_output_dim = 128, k=10, f=3, lr=0.0001, epochs=100, batch_size = 100):
     
-    h = torch.nn.Parameter(torch.rand(f, 1, requires_grad=True, dtype=torch.float64, device='cuda' if torch.cuda.is_available() else 'cpu'))
-
-    optimizer = optim.Adam([h], lr=lr)
-
-    ##something going wrong HERE
+    sigmoid = torch.nn.Sigmoid()
+    temp = (torch.nn.Parameter(torch.rand(f, 1, requires_grad=True, dtype=torch.float64, device='cuda' if torch.cuda.is_available() else 'cpu')))
+    optimizer = optim.Adam([temp], lr=lr)
+    print(f"Gradient of temp: {temp.grad}")
+   ##h = sigmoid(temp)
+    
+    
+    print(f"Gradient of temp: {temp.grad}")
+    
+  
+    
     Bi = normalized_bottom_k_with_bias(B, k)
     B_i = construct_convolutions_with_user_check(Bi, f)
     print(B_i)
     
     item_list = matrix.columns
-    loss_history = []
+    
+    loss_over_time = []
+
+    for epoch in range(epochs):
+        total_loss = 0
+        rating_matrix = torch.empty(1000, 0, dtype=torch.float64, device='cuda' if torch.cuda.is_available() else 'cpu', requires_grad=True)
+        for item_id in range(matrix.shape[1]):
+
+            # Get rating vector for the item
+
+            x_i = matrix.iloc[:][str(item_list[item_id])].values
+            #print(x_i)
+            x_i = torch.tensor(x_i, dtype=torch.float64, device='cuda' if torch.cuda.is_available() else 'cpu', requires_grad=True)
+            #print(x_i)
+
+            print(f"Gradient of temp: {temp.grad}")
+            x_hat = weighted_graph_convolution(x_i, B_i, temp)
+            print(f"Gradient of temp: {temp.grad}")
+            # if x_hat.abs().sum().item() == 0:
+            #     print('UH oh!')
+            #     print(item_id)
+            
+            if torch.isnan(x_hat).any():
+                print("Found NaN in x_hat")
+            if torch.isnan(x_i).any():
+                print("Found NaN in x_i")
+            # if torch.isinf(x_i).any() or torch.isinf(x_hat).any():
+            #     print("Found inf in x_i or x_hat")
+
+            # mask = x_i != 0  # Only consider entries where actual ratings are available
+            
+            ##here - need to find top M rated, and find their embeddings, and scale them by their predicted responses
+            
+            rating_matrix = torch.cat((rating_matrix, x_hat.unsqueeze(0).T), dim = -1)
+            
+        print(f"rating_matrix shape: {rating_matrix.shape}")
+        
+        for batch_start in range(0, matrix.shape[0], batch_size):
+            batch_end = min(batch_start + batch_size, matrix.shape[0])
+            user_batch = list(range(batch_start, batch_end))
+
+            u_hat_batch = rating_matrix[user_batch, :]
+            actual_embeddings = torch.tensor(
+                [process_data(true_interest_model.iloc[u]["interest model"]) for u in user_batch],
+                dtype=torch.float64, device='cuda' if torch.cuda.is_available() else 'cpu'
+            )
+
+            # Get predicted embeddings for the batch
+            predicted_embeddings = get_predicted_embedding_batched(
+                u_hat_batch, M, matrix, encoder_output_dim, partisan_labels, val_data, encoder, polarity_free_decoder, batch_size=batch_size
+            )
+
+            # Compute loss for the batch
+            loss = torch.mean((actual_embeddings - predicted_embeddings) ** 2)
+
+            # Update weights
+            if not torch.isnan(loss).any():
+                loss_over_time.append(loss.item())
+                total_loss += loss.item()
+                loss.backward(retain_graph=True)
+                # print(temp.grad)
+                optimizer.step()
+                optimizer.zero_grad()
+            else:
+                print("NaN encountered in loss computation")
+                
+            # print(f'Batch {batch_start} completed, Loss: {loss.item()}')
+
+        print(f"Epoch {epoch + 1}/{epochs}, Loss: {total_loss}")
+        ##pd.DataFrame(h.cpu().detach().numpy()).to_csv(f'src\\data\\CF\\trained_h_{f}_epoch_{epoch}.csv')
+
+    return h.cpu().detach().numpy(), loss_over_time
+        
+
+def train_weights(matrix, B, M, true_interest_model, partisan_labels, val_data, encoder, polarity_free_decoder, encoder_output_dim = 128, k=10, f=3, lr=0.01, epochs=100, batch_size = 100):
+    
+    sigmoid = torch.nn.Sigmoid()
+    temp = (torch.nn.Parameter(torch.rand(f, 1, requires_grad=True, dtype=torch.float64, device='cuda' if torch.cuda.is_available() else 'cpu')))
+    h = sigmoid(temp)
+
+    optimizer = optim.Adam([temp], lr=lr)
+    
+    Bi = normalized_bottom_k_with_bias(B, k)
+    B_i = construct_convolutions_with_user_check(Bi, f)
+    print(B_i)
+    
+    item_list = matrix.columns
+    
+    loss_over_time = []
 
     for epoch in range(epochs):
         total_loss = 0
@@ -347,6 +455,13 @@ def train_weights(matrix, B, M, true_interest_model, partisan_labels, val_data, 
             # print(f'Computing for user {u}')
             
             u_hat = rating_matrix[u]
+            
+            valid_mask = ~torch.isnan(u_hat) & (u_hat > 0)
+            filtered_row = u_hat[valid_mask]
+            if len(filtered_row) < M:
+                print(f"too few for user {u}, only {len(filtered_row)} found but need {M}")
+                continue
+                
         
             ##print('Predicting embedding...')
             predicted_user_embedding = get_predicted_embedding(u_hat, M, matrix, encoder_output_dim, partisan_labels, val_data, encoder, polarity_free_decoder)
@@ -361,20 +476,24 @@ def train_weights(matrix, B, M, true_interest_model, partisan_labels, val_data, 
             
             if not math.isnan(loss.item()):
                 total_loss += loss.item()
-                loss_history.append(loss.item())
               
             else:
                 print('Problem!')
 
             loss.backward(retain_graph=True)
-            ##print(h.grad)
+            # print(temp.grad)
             optimizer.step()
             optimizer.zero_grad()
+            
+            # print(f"User {u} completed, Loss: {loss.item()}")
+            loss_over_time.append(loss.item())
 
         print(f"Epoch {epoch + 1}/{epochs}, Loss: {total_loss}")
-        pd.DataFrame(h.clone().cpu().detach().numpy()).to_csv(f'src\\data\\CF\\trained_h_{f}_epoch_{epoch}.csv')
+        pd.DataFrame(temp.cpu().detach().numpy()).to_csv(f'src\\data\\CF\\trained_h_{f}_epoch_{epoch}.csv')
 
-    return h.detach().numpy(), loss_history
+
+    return temp.cpu().detach().numpy(), loss_over_time
+
 
 if __name__ == '__main__':
 
@@ -382,8 +501,8 @@ if __name__ == '__main__':
     intermediate_dim = 256
     encoder_output_dim = 128
 
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+    device='cuda' if torch.cuda.is_available() else 'cpu'
     encoder = Encoder(bert_dim, intermediate_dim, encoder_output_dim).to(device)
     polarity_free_decoder = Decoder(encoder_output_dim, intermediate_dim, encoder_output_dim).to(device)
 
@@ -422,13 +541,19 @@ if __name__ == '__main__':
     ##hacky
     B = user_correlation_matrix
     M = 5
-    f = 7
+
     print(B)
 
     # user_item_matrix = user_item_matrix
-
+    f = 5
     print('starting training')
-    trained_h, loss_over_time = train_weights(user_item_matrix, B, M, true_interest_model, partisan_labels, val_dataset, encoder, polarity_free_decoder, encoder_output_dim=128, k = 50, f = f, lr = 0.01, epochs = 10)
+    k = 10
+    lr = 0.00001
+    epochs = 10
+    
+    batch_size = 1
+
+    trained_h, loss_over_time = train_weights(user_item_matrix, B, M, true_interest_model, partisan_labels, val_dataset, encoder, polarity_free_decoder, encoder_output_dim=128, k = k, f = f, lr = lr, epochs = epochs, batch_size=batch_size)
 
     pd.DataFrame(trained_h).to_csv(f'src\\data\\CF\\trained_h_{f}_final.csv')
 
@@ -436,3 +561,5 @@ if __name__ == '__main__':
     plt.scatter(range(len(loss_over_time)), loss_over_time)
     plt.savefig(f'src\\data\\CF\\trained_h_{f}_loss_over_time.png')
     plt.show()
+
+    

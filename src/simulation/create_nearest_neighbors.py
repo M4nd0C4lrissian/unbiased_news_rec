@@ -114,6 +114,7 @@ def landmark_embedding(landmarks, embedding, normalized_distance):
 t = pd.read_pickle('1000users.pkl')
 classes = ['bystanders', 'core conserv', 'country first conserv', 'devout and diverse', 'disaffected democrats', 'market skeptic repub', 'new era enterprisers', 'oppty democrats', 'solid liberas']
 
+
 item_ids = topic_lists['article_id'].values[0:1000]
 
 dummy_data = np.zeros((1000, len(item_ids)))
@@ -161,6 +162,7 @@ for i in range(len(classes)):
     polarity_free_interest_model = pd.concat([polarity_free_interest_model, pd.DataFrame.from_records(p_free_embeddings)], ignore_index=True)
         
 user_space_matrix.to_csv('src\data\\user_space\\user_space_matrix_with_topics.csv')
+correlation = np.corrcoef(distance_embeddings)
 distance_embeddings =  pd.DataFrame(distance_embeddings)
 distance_embeddings.to_csv('src\data\\user_space\\user_space_matrix.csv')
 
@@ -168,13 +170,15 @@ user_item_matrix.to_csv('src\data\\CF\\user_item_matrix.csv')
 
 ##Now - should have a 9d vector for each of our 1000 users, now we have to calculate all of their similarity
 
-dot_product_matrix = linear_kernel(distance_embeddings)
+pd.DataFrame(correlation).to_csv('src\data\\user_space\\correlation_matrix.csv')
+
+# dot_product_matrix = linear_kernel(distance_embeddings)
 
 # Convert back to a DataFrame (optional, for easier interpretation)
-dot_product_df = pd.DataFrame(dot_product_matrix)
-dot_product_df.to_csv('src\data\\user_space\\correlation_matrix.csv')
+# dot_product_df = pd.DataFrame(dot_product_matrix)
+# dot_product_df.to_csv('src\data\\user_space\\correlation_matrix.csv')
 
-polarity_free_interest_model.to_csv('src\\data\\CF\\interest_models.csv')
+# polarity_free_interest_model.to_csv('src\\data\\CF\\interest_models.csv')
 
 ##edits - use training data (only 4000 items)
 ## also create a user-item matrix 
