@@ -98,6 +98,22 @@ landmarks = pd.read_csv("src\data\\landmark_data\\landmark_embeddings.csv").drop
 topic_lists = pd.read_csv("src\data\\landmark_data\\validation_topics_in_embedding_order.csv")     
 data_source_path = "D:\Bert-Embeddings\\validation_data\\"
 
+
+landmarks = pd.read_csv("src\data\\landmark_data\\landmark_embeddings.csv").drop(columns=['Unnamed: 0'])
+norm_dist = np.ones(landmarks.iloc[0].size)
+
+for i in range(landmarks.shape[1]):
+    col = landmarks.iloc[:][str(i)]
+    
+    d = col.describe()
+    
+    max_diff = abs(d['max'] - d['min'])
+    norm_dist[i] = max_diff
+    
+    
+pd.DataFrame(norm_dist).to_csv('src\\data\\landmark_data\\max_dist.csv')
+
+
 normalized_distance = pd.read_csv('src\\data\\landmark_data\\max_dist.csv')['0'].to_numpy()
 
 def dist(a, b, normalized_distance):
