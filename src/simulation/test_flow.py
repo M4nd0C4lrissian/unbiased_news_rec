@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import pandas as pd
 import ast
+import matplotlib.pyplot as plt
 
 import per_user_gcf as GC
 
@@ -113,6 +114,7 @@ def evaluate():
     f = 5
     k = 30
     
+    total_topic_dist = np.array(pd.read_csv('src\\data\\results2\\total_topic_dist.csv').drop(columns=['Unnamed: 0']))
     
     item_topic = pd.read_csv('src\\data\\landmark_data\\validation_topics_in_embedding_order.csv')
     item_polarity = pd.read_csv('src\\data\\auto_encoder_training\\validation_data\\validation_partisan_labels.csv')
@@ -134,6 +136,8 @@ def evaluate():
 
     classes = ['bystanders', 'core conserv', 'country first conserv', 'devout and diverse', 'disaffected democrats', 'market skeptic repub', 'new era enterprisers', 'oppty democrats', 'solid liberas']
     class_map = {'bystanders': 0, 'core conserv': 1, 'country first conserv': 2, 'devout and diverse': 3, 'disaffected democrats': 4, 'market skeptic repub': 5, 'new era enterprisers': 6, 'oppty democrats': 7, 'solid liberas': 8}
+    
+    
     number_of_users = [49, 153, 63, 69, 108, 116, 116, 133, 193]
 
     t = pd.read_pickle('1000users.pkl')
@@ -146,6 +150,8 @@ def evaluate():
     
     recommendation_stats = np.zeros((9, 14, 5))
     oracle_stats = np.zeros((9, 14, 5))
+    
+    original_interaction_stats = np.zeros((9, 14, 5))
     
     ## topic diversity?
     
@@ -165,8 +171,21 @@ def evaluate():
             q+=1
         
         class_oracle_vectors[i] = pd.read_csv(f'src\\data\\synthetic_user\\simple_choice_{cl}.csv').drop(columns=['Unnamed: 0']).to_numpy()
+        
+    
+    list = []
+    prev = 0
+    for i in range(len(classes)):
+        u = np.random.randint(prev, np.sum(prev + number_of_users[i]))
+        list.append(u)
+        prev += number_of_users[i]
+    
+    # 
+    # ## per user: (topic coverage, diversity correct topics)
+    # user_metrics = np.empty((len(list), 2))
+    user_metrics = []
 
-    for u in range(user_item_matrix.shape[0]):
+    for u in list:
         
         row = user_item_matrix.iloc[u]
         valid_mask = (row == 0)
@@ -215,8 +234,45 @@ def evaluate():
         ]
         
         
-        # retrieve polarity + gauge utility
+        ## original 
+        
+        mask = (row != 0)
+        magnitudes = np.array(row[mask])
+        rated_indices = np.where(mask)[0]
+        
+        orig = np.zeros((14,5))
+        total_mag = np.zeros((14,5))
+        
+        for k in range(len(rated_indices)):
+            item_id = item_list[rated_indices[k]]
+            
+            rated_label = item_polarity.loc[item_polarity['article_id'] == int(item_id)]['source_partisan_score'].values[0]
+            
+            rated_topic = np.array(ast.literal_eval(item_topic.loc[item_topic['article_id'] == int(item_id)]['topical_vector'].values[0]))
+            
+            topic_ind = np.where(rated_topic > 0)[0] // 5
+            
+            rated_topic = rated_topic.reshape((14,5))
+            
+            orig += magnitudes[k] * rated_topic
+            
+            for top in topic_ind:
+                total_mag[top][rated_label+2] += 1
+            
+        interaction = np.nan_to_num(np.divide(orig, total_mag))
+        
+        original_interaction_stats[class_map[c]] = interaction
+        
+        existing_topics = []
+        
+        for index in range(14):
+            if np.sum(original_interaction_stats[class_map[c]][index]) > 0:
+                existing_topics.append(index)
  
+        existing_topics = np.array(existing_topics)
+        
+        percent_topic_hit = 0
+        diversity_over_hit_topics = 0
         
         # oracle selection
         oracle_vec = class_oracle_vectors[class_map[c]]
@@ -257,74 +313,153 @@ def evaluate():
             count += 1
         
         chosen_ids = item_list[chosen_items]
-        
-        c_id = chosen_ids[0]
-        
-        u_choice = users_choice[u]
-        
-        o_label = item_polarity.loc[item_polarity['article_id'] == int(oracle_id)]['source_partisan_score'].values[0]
-        c_label = item_polarity.loc[item_polarity['article_id'] == int(c_id)]['source_partisan_score'].values[0]
-        
-        o_topics = ast.literal_eval(item_topic.loc[item_topic['article_id'] == int(oracle_id)]['topical_vector'].values[0])
-        c_topics = ast.literal_eval(item_topic.loc[item_topic['article_id'] == int(c_id)]['topical_vector'].values[0])
-        
-        o_utility = user_interaction_score(u_choice, o_topics)
-        c_utility = user_interaction_score(u_choice, c_topics)
-        
-        idx = class_map[c]
-        
-        oracle_partisan_score[o_label+2] += 1
-        chosen_partisan_score[c_label+2] += 1
-        
-        oracle_per_class_score[idx][o_label+2] += 1
-        chosen_per_class_score[idx][c_label+2] += 1
-        
-        o_stats = np.array(o_topics).reshape((14, 5))
-        c_stats = np.array(c_topics).reshape((14, 5))
-        
-        recommendation_stats[idx] += c_stats
-        oracle_stats[idx] += o_stats
             
-        
-        oracle_utility_across_classes[idx] += o_utility
-        chosen_utility_across_classes[idx] += c_utility
+        for item_id in range(len(chosen_ids)):
+         
+            c_id = chosen_ids[item_id]
+         
+            u_choice = users_choice[u]
             
-        
+            o_label = item_polarity.loc[item_polarity['article_id'] == int(oracle_id)]['source_partisan_score'].values[0]
+            c_label = item_polarity.loc[item_polarity['article_id'] == int(c_id)]['source_partisan_score'].values[0]
             
-    random_performance = np.divide(oracle_utility_across_classes, np.multiply(1, number_of_users))
-    model_performance = np.divide(chosen_utility_across_classes, np.multiply(1, number_of_users))
+            o_topics = ast.literal_eval(item_topic.loc[item_topic['article_id'] == int(oracle_id)]['topical_vector'].values[0])
+            c_topics = ast.literal_eval(item_topic.loc[item_topic['article_id'] == int(c_id)]['topical_vector'].values[0])
+            
+            
+            
+            chosen_topic_indices = np.where(np.array(c_topics) > 0)[0] // 5
+            
+            mask = np.isin(chosen_topic_indices, existing_topics)
+
+            if np.any(mask):
+                diversities = []
+                percent_topic_hit += 1
+                pos = chosen_topic_indices[mask]
+                for i in pos:
+                    row = interaction[i]
+                    row /= sum(row)
+                    lab = c_label + 2
+                    diversities.append(1 - row[lab])
+                diversity_over_hit_topics += np.max(diversities)               
+            
+            
+            o_utility = user_interaction_score(u_choice, o_topics)
+            c_utility = user_interaction_score(u_choice, c_topics)
+            
+            idx = class_map[c]
+            
+            oracle_partisan_score[o_label+2] += 1
+            chosen_partisan_score[c_label+2] += 1
+            
+            oracle_per_class_score[idx][o_label+2] += 1
+            chosen_per_class_score[idx][c_label+2] += 1
+            
+            o_stats = np.array(o_topics).reshape((14, 5))
+            c_stats = np.array(c_topics).reshape((14, 5))
+            
+            recommendation_stats[idx] += c_stats
+            oracle_stats[idx] += o_stats
+                
+            
+            oracle_utility_across_classes[idx] += o_utility
+            chosen_utility_across_classes[idx] += c_utility
+            
+        ##NEEDS TO CHANGE FOR ALL USERS
+        user_metrics.append(np.array([percent_topic_hit / len(chosen_ids), diversity_over_hit_topics / percent_topic_hit]))
+    
+            
+    random_performance = np.divide(oracle_utility_across_classes, np.multiply(M, number_of_users))
+    model_performance = np.divide(chosen_utility_across_classes, np.multiply(M, number_of_users))
     
     
     for i in range(recommendation_stats.shape[0]):
         
-        pd.DataFrame(recommendation_stats[i], columns=['-2', '-1', '0', '1', '2'], index=['abortion', 'environment', 'guns', 'health care', 'immigration', 'LGBTQ', 'racism', 'taxes',
-          'technology', 'trade', 'trump impeachment', 'us military', 'us 2020 election', 'welfare']).to_csv(f'src\\data\\results2\\recommended\\{classes[i]}.csv')
-        pd.DataFrame(oracle_stats[i], columns=['-2', '-1', '0', '1', '2'], index=['abortion', 'environment', 'guns', 'health care', 'immigration', 'LGBTQ', 'racism', 'taxes',
-          'technology', 'trade', 'trump impeachment', 'us military', 'us 2020 election', 'welfare']).to_csv(f'src\\data\\results2\\oracle\\{classes[i]}.csv')
+        # pd.DataFrame(recommendation_stats[i], columns=['-2', '-1', '0', '1', '2'], index=['abortion', 'environment', 'guns', 'health care', 'immigration', 'LGBTQ', 'racism', 'taxes',
+        #   'technology', 'trade', 'trump impeachment', 'us military', 'us 2020 election', 'welfare']).to_csv(f'src\\data\\results2\\recommended\\{classes[i]}.csv')
+        # pd.DataFrame(oracle_stats[i], columns=['-2', '-1', '0', '1', '2'], index=['abortion', 'environment', 'guns', 'health care', 'immigration', 'LGBTQ', 'racism', 'taxes',
+        #   'technology', 'trade', 'trump impeachment', 'us military', 'us 2020 election', 'welfare']).to_csv(f'src\\data\\results2\\oracle\\{classes[i]}.csv')
         
-        pd.DataFrame(chosen_per_class_score[i]).to_csv(f'src\\data\\results2\\recommended\\partisan_dist_{classes[i]}.csv')
-        pd.DataFrame(oracle_per_class_score[i]).to_csv(f'src\\data\\results2\\oracle\\partisan_dist_{classes[i]}.csv')
+        # pd.DataFrame(chosen_per_class_score[i]).to_csv(f'src\\data\\results2\\recommended\\partisan_dist_{classes[i]}.csv')
+        # pd.DataFrame(oracle_per_class_score[i]).to_csv(f'src\\data\\results2\\oracle\\partisan_dist_{classes[i]}.csv')
+        pass
+    
+    
+    for i in range(len(classes)):
+        cl = classes[i]
+
+        print(f'{cl}: ')
+        
+        fig, (ax1, ax2) = plt.subplots(1, 2)
+
+        arr = recommendation_stats[i]
+        arr2 = original_interaction_stats[i]
+
+        # total = np.sum(arr.flatten())
+        # print(total)
+        # arr /= total
+        
+        total = np.sum(arr2.flatten())
+        arr2 /= total
+        
+        
+        fig, axes = plt.subplots(1, 3, figsize=(12, 8), constrained_layout=True)  # Horizontally stacked
+
+        # Plot the first heatmap
+        im1 = axes[0].imshow(arr, cmap='Blues', interpolation='none')
+        axes[0].set_title(f"Topic Cov: {user_metrics[i][0]}, Div: {user_metrics[i][1]}")  # Title for the first subplot
+        axes[0].set_xticks(np.arange(5))
+        axes[0].set_xticklabels([-2, -1, 0, 1, 2])
+        axes[0].set_yticks(np.arange(len(chosen_topic)))
+        axes[0].set_yticklabels(chosen_topic)
+
+        # Plot the second heatmap
+        im2 = axes[1].imshow(arr2, cmap='Blues', interpolation='none')
+        axes[1].set_title("User Interest relative to Ratings")  # Title for the second subplot
+        axes[1].set_xticks(np.arange(5))
+        axes[1].set_xticklabels([-2, -1, 0, 1, 2])
+        axes[1].set_yticks(np.arange(len(chosen_topic)))
+        axes[1].set_yticklabels(['','','','','','','','','','','','','',''])
+
+
+        im3 = axes[2].imshow(total_topic_dist, cmap='Blues', interpolation='none')
+        axes[2].set_title("Topic Distribution in Item Set")  # Title for the second subplot
+        axes[1].set_xticks(np.arange(0))
+        axes[1].set_xticklabels([])
+        axes[2].set_yticks(np.arange(len(chosen_topic)))
+        axes[2].set_yticklabels(['','','','','','','','','','','','','',''])
+
+
+        # Add colorbars for both plots
+        fig.colorbar(im1, ax=axes[0], orientation='vertical', shrink=0.8)
+        fig.colorbar(im2, ax=axes[1], orientation='vertical', shrink=0.8)
+        fig.colorbar(im3, ax=axes[2], orientation='vertical', shrink=0.8)
+
+        # Save the figure
+        plt.savefig(f'src\\data\\graphs\\{cl}.png')
+
         
 
     print(f'Model performance across classes: {model_performance}, with bias distribution: {chosen_partisan_score}')
     print(f'Random performance across classes: {random_performance}, with bias distribution: {oracle_partisan_score}')
     
-    df = pd.read_csv('src\\data\\landmark_data\\validation_topics_in_embedding_order.csv').iloc[:1000]
-    total = np.zeros(70)
+    # df = pd.read_csv('src\\data\\landmark_data\\validation_topics_in_embedding_order.csv').iloc[:1000]
+    # total = np.zeros(70)
 
-    for i in range(df.shape[0]):
-        row = df.iloc[i]
-        topics = np.array(ast.literal_eval(row['topical_vector']))
+    # for i in range(df.shape[0]):
+    #     row = df.iloc[i]
+    #     topics = np.array(ast.literal_eval(row['topical_vector']))
         
-        total += topics
+    #     total += topics
         
-    per_topic = total.reshape((14,5))
+    # per_topic = total.reshape((14,5))
 
-    more_per_topic = np.zeros(14)
-    for j in range(per_topic.shape[0]):
-        more_per_topic[j] = np.sum(per_topic[j])
+    # more_per_topic = np.zeros(14)
+    # for j in range(per_topic.shape[0]):
+    #     more_per_topic[j] = np.sum(per_topic[j])
         
-    pd.DataFrame(more_per_topic).to_csv('src\\data\\results2\\total_topic_dist.csv')
+    # pd.DataFrame(more_per_topic).to_csv('src\\data\\results2\\total_topic_dist.csv')
+    print(list)
     
     return
     
@@ -352,7 +487,7 @@ def simple_choice_calc():
             
         
 def oracle_eval():
-     pass           
+    pass           
         
 
 ##last attempt - sample one user randomly from every class, use user-item matrix to compute interest, compare with the recommended jazzl
@@ -361,6 +496,6 @@ def oracle_eval():
 ##not really testing recommendation diversity at the individual level - should try this
 if __name__ == '__main__':
     # create_predicted_rating_matrix()
-    # evaluate()
+    evaluate()
     
-    simple_choice_calc()
+    # simple_choice_calc()
