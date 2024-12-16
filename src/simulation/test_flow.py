@@ -173,19 +173,19 @@ def evaluate():
         class_oracle_vectors[i] = pd.read_csv(f'src\\data\\synthetic_user\\simple_choice_{cl}.csv').drop(columns=['Unnamed: 0']).to_numpy()
         
     
-    list = []
-    prev = 0
-    for i in range(len(classes)):
-        u = np.random.randint(prev, np.sum(prev + number_of_users[i]))
-        list.append(u)
-        prev += number_of_users[i]
+    # list = []
+    # prev = 0
+    # for i in range(len(classes)):
+    #     u = np.random.randint(prev, np.sum(prev + number_of_users[i]))
+    #     list.append(u)
+    #     prev += number_of_users[i]
     
     # 
     # ## per user: (topic coverage, diversity correct topics)
     # user_metrics = np.empty((len(list), 2))
     user_metrics = []
 
-    for u in list:
+    for u in range(user_item_matrix.shape[0]):
         
         row = user_item_matrix.iloc[u]
         valid_mask = (row == 0)
@@ -341,7 +341,7 @@ def evaluate():
                     row /= sum(row)
                     lab = c_label + 2
                     diversities.append(1 - row[lab])
-                diversity_over_hit_topics += np.max(diversities)               
+                diversity_over_hit_topics += np.max(diversities) ## I should probably do average here
             
             
             o_utility = user_interaction_score(u_choice, o_topics)
@@ -366,77 +366,81 @@ def evaluate():
             chosen_utility_across_classes[idx] += c_utility
             
         ##NEEDS TO CHANGE FOR ALL USERS
-        user_metrics.append(np.array([percent_topic_hit / len(chosen_ids), diversity_over_hit_topics / percent_topic_hit]))
+        user_metrics.append({'topic_hit': percent_topic_hit / len(chosen_ids), 'diversity': diversity_over_hit_topics / percent_topic_hit})
     
-            
+    
+    pd.DataFrame(user_metrics).to_csv('src\\data\\total_eval\\all_user_metrics.csv')
+           
     random_performance = np.divide(oracle_utility_across_classes, np.multiply(M, number_of_users))
     model_performance = np.divide(chosen_utility_across_classes, np.multiply(M, number_of_users))
     
     
-    for i in range(recommendation_stats.shape[0]):
-        
-        # pd.DataFrame(recommendation_stats[i], columns=['-2', '-1', '0', '1', '2'], index=['abortion', 'environment', 'guns', 'health care', 'immigration', 'LGBTQ', 'racism', 'taxes',
-        #   'technology', 'trade', 'trump impeachment', 'us military', 'us 2020 election', 'welfare']).to_csv(f'src\\data\\results2\\recommended\\{classes[i]}.csv')
-        # pd.DataFrame(oracle_stats[i], columns=['-2', '-1', '0', '1', '2'], index=['abortion', 'environment', 'guns', 'health care', 'immigration', 'LGBTQ', 'racism', 'taxes',
-        #   'technology', 'trade', 'trump impeachment', 'us military', 'us 2020 election', 'welfare']).to_csv(f'src\\data\\results2\\oracle\\{classes[i]}.csv')
-        
-        # pd.DataFrame(chosen_per_class_score[i]).to_csv(f'src\\data\\results2\\recommended\\partisan_dist_{classes[i]}.csv')
-        # pd.DataFrame(oracle_per_class_score[i]).to_csv(f'src\\data\\results2\\oracle\\partisan_dist_{classes[i]}.csv')
-        pass
     
     
-    for i in range(len(classes)):
-        cl = classes[i]
-
-        print(f'{cl}: ')
+    # for i in range(recommendation_stats.shape[0]):
         
-        fig, (ax1, ax2) = plt.subplots(1, 2)
-
-        arr = recommendation_stats[i]
-        arr2 = original_interaction_stats[i]
-
-        # total = np.sum(arr.flatten())
-        # print(total)
-        # arr /= total
+    #     # pd.DataFrame(recommendation_stats[i], columns=['-2', '-1', '0', '1', '2'], index=['abortion', 'environment', 'guns', 'health care', 'immigration', 'LGBTQ', 'racism', 'taxes',
+    #     #   'technology', 'trade', 'trump impeachment', 'us military', 'us 2020 election', 'welfare']).to_csv(f'src\\data\\results2\\recommended\\{classes[i]}.csv')
+    #     # pd.DataFrame(oracle_stats[i], columns=['-2', '-1', '0', '1', '2'], index=['abortion', 'environment', 'guns', 'health care', 'immigration', 'LGBTQ', 'racism', 'taxes',
+    #     #   'technology', 'trade', 'trump impeachment', 'us military', 'us 2020 election', 'welfare']).to_csv(f'src\\data\\results2\\oracle\\{classes[i]}.csv')
         
-        total = np.sum(arr2.flatten())
-        arr2 /= total
+    #     # pd.DataFrame(chosen_per_class_score[i]).to_csv(f'src\\data\\results2\\recommended\\partisan_dist_{classes[i]}.csv')
+    #     # pd.DataFrame(oracle_per_class_score[i]).to_csv(f'src\\data\\results2\\oracle\\partisan_dist_{classes[i]}.csv')
+    #     pass
+    
+    
+    # for i in range(len(classes)):
+    #     cl = classes[i]
+
+    #     print(f'{cl}: ')
+        
+    #     fig, (ax1, ax2) = plt.subplots(1, 2)
+
+    #     arr = recommendation_stats[i]
+    #     arr2 = original_interaction_stats[i]
+
+    #     # total = np.sum(arr.flatten())
+    #     # print(total)
+    #     # arr /= total
+        
+    #     total = np.sum(arr2.flatten())
+    #     arr2 /= total
         
         
-        fig, axes = plt.subplots(1, 3, figsize=(12, 8), constrained_layout=True)  # Horizontally stacked
+    #     fig, axes = plt.subplots(1, 3, figsize=(12, 8), constrained_layout=True)  # Horizontally stacked
 
-        # Plot the first heatmap
-        im1 = axes[0].imshow(arr, cmap='Blues', interpolation='none')
-        axes[0].set_title(f"Topic Cov: {user_metrics[i][0]}, Div: {user_metrics[i][1]}")  # Title for the first subplot
-        axes[0].set_xticks(np.arange(5))
-        axes[0].set_xticklabels([-2, -1, 0, 1, 2])
-        axes[0].set_yticks(np.arange(len(chosen_topic)))
-        axes[0].set_yticklabels(chosen_topic)
+    #     # Plot the first heatmap
+    #     im1 = axes[0].imshow(arr, cmap='Blues', interpolation='none')
+    #     axes[0].set_title(f"Topic Cov: {user_metrics[i][0]}, Div: {user_metrics[i][1]}")  # Title for the first subplot
+    #     axes[0].set_xticks(np.arange(5))
+    #     axes[0].set_xticklabels([-2, -1, 0, 1, 2])
+    #     axes[0].set_yticks(np.arange(len(chosen_topic)))
+    #     axes[0].set_yticklabels(chosen_topic)
 
-        # Plot the second heatmap
-        im2 = axes[1].imshow(arr2, cmap='Blues', interpolation='none')
-        axes[1].set_title("User Interest relative to Ratings")  # Title for the second subplot
-        axes[1].set_xticks(np.arange(5))
-        axes[1].set_xticklabels([-2, -1, 0, 1, 2])
-        axes[1].set_yticks(np.arange(len(chosen_topic)))
-        axes[1].set_yticklabels(['','','','','','','','','','','','','',''])
-
-
-        im3 = axes[2].imshow(total_topic_dist, cmap='Blues', interpolation='none')
-        axes[2].set_title("Topic Distribution in Item Set")  # Title for the second subplot
-        axes[1].set_xticks(np.arange(0))
-        axes[1].set_xticklabels([])
-        axes[2].set_yticks(np.arange(len(chosen_topic)))
-        axes[2].set_yticklabels(['','','','','','','','','','','','','',''])
+    #     # Plot the second heatmap
+    #     im2 = axes[1].imshow(arr2, cmap='Blues', interpolation='none')
+    #     axes[1].set_title("User Interest relative to Ratings")  # Title for the second subplot
+    #     axes[1].set_xticks(np.arange(5))
+    #     axes[1].set_xticklabels([-2, -1, 0, 1, 2])
+    #     axes[1].set_yticks(np.arange(len(chosen_topic)))
+    #     axes[1].set_yticklabels(['','','','','','','','','','','','','',''])
 
 
-        # Add colorbars for both plots
-        fig.colorbar(im1, ax=axes[0], orientation='vertical', shrink=0.8)
-        fig.colorbar(im2, ax=axes[1], orientation='vertical', shrink=0.8)
-        fig.colorbar(im3, ax=axes[2], orientation='vertical', shrink=0.8)
+    #     im3 = axes[2].imshow(total_topic_dist, cmap='Blues', interpolation='none')
+    #     axes[2].set_title("Topic Distribution in Item Set")  # Title for the second subplot
+    #     axes[1].set_xticks(np.arange(0))
+    #     axes[1].set_xticklabels([])
+    #     axes[2].set_yticks(np.arange(len(chosen_topic)))
+    #     axes[2].set_yticklabels(['','','','','','','','','','','','','',''])
 
-        # Save the figure
-        plt.savefig(f'src\\data\\graphs\\{cl}.png')
+
+    #     # Add colorbars for both plots
+    #     fig.colorbar(im1, ax=axes[0], orientation='vertical', shrink=0.8)
+    #     fig.colorbar(im2, ax=axes[1], orientation='vertical', shrink=0.8)
+    #     fig.colorbar(im3, ax=axes[2], orientation='vertical', shrink=0.8)
+
+    #     # Save the figure
+    #     plt.savefig(f'src\\data\\graphs\\{cl}.png')
 
         
 
@@ -459,7 +463,7 @@ def evaluate():
     #     more_per_topic[j] = np.sum(per_topic[j])
         
     # pd.DataFrame(more_per_topic).to_csv('src\\data\\results2\\total_topic_dist.csv')
-    print(list)
+    # print(list)
     
     return
     
