@@ -59,9 +59,9 @@ class Decoder(nn.Module):
         self.fc2 = nn.Linear(intermediate_dim + input_dim, intermediate_dim)
         self.fc3 = nn.Linear(intermediate_dim + input_dim, output_dim)
         
-        nn.init.uniform_(self.fc1.weight, a=-2.0, b=2.0)
-        nn.init.uniform_(self.fc2.weight, a=-2.0, b=2.0)
-        nn.init.uniform_(self.fc3.weight, a=-2.0, b=2.0)
+        nn.init.uniform_(self.fc1.weight, a=-1.0, b=1.0)
+        nn.init.uniform_(self.fc2.weight, a=-1.0, b=1.0)
+        nn.init.uniform_(self.fc3.weight, a=-1.0, b=1.0)
 
     def forward(self, x):
         x1 = F.leaky_relu(self.fc1(x), negative_slope=0.1)
@@ -239,9 +239,9 @@ def train(model, scheduler, dataset, val_dataset, optimizer, path_to_data, embed
             total_loss = recon_loss + class_loss + conf_loss
             
             total_train_loss += total_loss.item()
-            print(f"Reconstruction loss: {recon_loss}")
-            print(f"Classification loss: {class_loss}")
-            print(f"Confusion loss: {conf_loss}")
+            # print(f"Reconstruction loss: {recon_loss}")
+            # print(f"Classification loss: {class_loss}")
+            # print(f"Confusion loss: {conf_loss}")
 
             # Backward pass
             total_loss.backward()
@@ -299,7 +299,7 @@ if __name__ == '__main__':
     
     
     encoder = Encoder(bert_dim, intermediate_dim, encoder_output_dim)
-    epochs = 3
+    epochs = 10
     
     embedding_batch_num = 1000
     

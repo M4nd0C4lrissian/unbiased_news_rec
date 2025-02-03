@@ -41,8 +41,7 @@ class CustomArticleEmbeddingDataset(Dataset):
         return self.current_article_labels.shape[0]
 
     def __getitem__(self, idx):
-  
-        ##issue - labels_file is of length 40000, while title and text are of length 1000 
+
         text = self.text_embeddings[idx]
         title = self.title_embeddings[idx]
         label = self.transform(self.current_article_labels.iloc[idx]['source_partisan_score'])
