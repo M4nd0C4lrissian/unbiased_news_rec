@@ -5,6 +5,10 @@ import ast
 import matplotlib.pyplot as plt
 
 import per_user_gcf as GC
+import baseline_per_user_gcf as BGCF
+
+from collections import defaultdict
+import copy
 
 def multi_weighted_graph_convolution(x_i, Bs, h):
 
@@ -66,31 +70,98 @@ def simple_doct_product(u, v):
 
     return np.dot(u, v)
 
-def create_predicted_rating_matrix(f, k, h, correlation_matrix):
+def altered_normalized_bottom_k_with_bias(bi, k, selection_count, index_set, alpha=0.0):
+    """
+    Probabilistically adjust selection to promote fuller coverage of users.
+    
+    Args:
+    - Bi: Correlation matrix.
+    - k: Number of users to select per user.
+    - alpha: Bias adjustment factor (0.0 = no bias, 1.0 = full bias to less-selected users).
+    
+    Returns:
+    - norm_B: Normalized matrix with retained bottom-k values.
+    """
+    # global selection_count, index_set  # Track selection frequency globally
+    
+    norm_B = np.zeros_like(copy.deepcopy(bi), dtype=np.float64)
+    
+    Bi = -copy.deepcopy(bi)
+
+    for u in range(Bi.shape[0]):
+        row = Bi[u]
+
+        # Filter out NaNs and negative values
+        valid_mask = ~np.isnan(row)
+        filtered_row = row[valid_mask]
+
+        if len(filtered_row) == 0:
+            norm_B[u] = np.zeros_like(row)
+            print(f'user: {u} has no viable users')
+            continue
+
+        # Adjust scores to include selection bias
+        original_indices = np.where(valid_mask)[0]
+        adjusted_scores = filtered_row.copy()
+
+        for idx, orig_idx in enumerate(original_indices):
+            # Adjust scores based on selection count
+            adjusted_scores[idx] += alpha * (1 / (1 + selection_count[orig_idx]))
+
+        # Get indices of the bottom-k adjusted values
+        retain_ind = np.argsort(-adjusted_scores)[:k]
+        retain_val = filtered_row[retain_ind]
+
+        # Update the global selection count
+        for ind in original_indices[retain_ind]:
+            selection_count[ind] += 1
+            index_set.add(ind)
+
+        # Normalize retained values
+        s = np.sum(retain_val)
+        if s == 0:
+            norm_B[u] = np.zeros_like(row)
+            print('BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB')
+            continue
+
+        # Create a new row with only the selected values retained
+        b = np.zeros_like(row)
+        b[original_indices[retain_ind]] = retain_val
+        b = b / s  # Normalize to sum to 1
+
+        norm_B[u] = b
+
+    return norm_B
+
+## can use for the pure rating ones too
+def create_predicted_rating_matrix(f, k, h, user_item_matrix, correlation_matrix, top_k):
  
+    correlation_matrix = pd.read_csv("src\\data\\baseline_data\\CF\\correlation_matrix.csv").drop(columns=['Unnamed: 0']).to_numpy()
+    user_item_matrix = pd.read_csv("src\\data\\CF_test_correlation\\user_item_matrix.csv").drop(columns=['Unnamed: 0'])
     np.fill_diagonal(correlation_matrix, 0)
-    B = correlation_matrix
+    B = copy.deepcopy(correlation_matrix)
 
     ## was 100 in training - I did not realize 
-
-    Bi = GC.normalized_bottom_k_with_bias(B, k)
-    B_i = GC.construct_convolutions_with_user_check(Bi, f)
+    
+    if top_k:
+        Bi = BGCF.normalized_top_k_with_bias(B, k)
+    else:
+        selection_count = defaultdict(int)
+        index_set = set()
+        Bi = altered_normalized_bottom_k_with_bias(B, k, selection_count, index_set, alpha=0.0)
+        # Bi = BGCF.normalized_bottom_k_with_bias(B, k)
+        
+    B_i = BGCF.construct_convolutions_with_user_check(Bi, f)
 
     # s = torch.nn.Sigmoid()
     # h = s(h)
-
-    item_topic =  pd.read_csv('src\data\\baseline_data\\baseline_testing_data.csv', skipinitialspace=True, usecols=['article_id', 'topical_vector', 'source_partisan_score'])
-    item_polarity = pd.read_csv('src\data\\baseline_data\\baseline_testing_data.csv', skipinitialspace=True, usecols=['article_id', 'source_partisan_score'])
-
-    user_item_matrix = pd.read_csv("src\\data\\CF_test_correlation\\user_item_matrix.csv").drop(columns=['Unnamed: 0'])
-
+    print('Here')
 
     with torch.no_grad():
-        item_list = pd.read_csv('src\data\\baseline_data\\baseline_testing_data.csv', skipinitialspace=True, usecols=['article_id'])
     
         # Get rating vector for the item
 
-        x_i = user_item_matrix.to_numpy()
+        x_i = copy.deepcopy(user_item_matrix).to_numpy()
         #print(x_i)
         x_i = torch.tensor(x_i, dtype=torch.float64, device='cuda' if torch.cuda.is_available() else 'cpu')
         #print(x_i)
@@ -109,7 +180,7 @@ def create_predicted_rating_matrix(f, k, h, correlation_matrix):
             
         print(f"rating_matrix shape: {x_hat.shape}")
 
-    return x_hat
+    return copy.deepcopy(x_hat)
 
 
 ## load user choice models - what is the user choice model?
@@ -125,17 +196,53 @@ def create_predicted_rating_matrix(f, k, h, correlation_matrix):
 ## take items with the top k scores, and gauge the response / diversity of polarity and topics (also calculate loss for the time being)
 ## do the same for k random items, and compare 
 
-def evaluate():
+def log(user_metrics):
+    classes = [
+    "bystanders",
+    "solid liberas",
+    "oppty democrats",
+    "disaffected democrats",
+    "devout and diverse",
+    "new era enterprisers",
+    "market skeptic repub",
+    "country first conserv",
+    "core conserv",
+    ]
+
+    ##class_map = {'bystanders': 0, 'core conserv': 8, 'country first conserv': 7, 'devout and diverse': 4, 'disaffected democrats': 3, 'market skeptic repub': 6, 'new era enterprisers': 5, 'oppty democrats': 2, 'solid liberas': 1}
+
+    number_of_users = [49, 193, 133, 108, 69, 116, 116, 63, 153]
+
+    # user_metrics = pd.read_csv('src\\data\\baseline_data\\total_eval\\all_user_metrics.csv').drop(columns=['Unnamed: 0'])
+
+    curr = 0
+    for i in range(len(classes)):
+        class_users = user_metrics.iloc[curr: curr + number_of_users[i]]
+        print(f'Class {classes[i]}----------------- ')
+        print('Topic coverage: ')
+        print(class_users['topic_hit'].describe())
+        print()
+        print('Diversity over hits: ')
+        print(class_users['diversity'].describe())
+        print()
+        curr += number_of_users[i]
+
+##TODO
+## want to - save logs of the recommendations generated for each user (indices, and flattened 14 x 5)
+## add logging / evaluation stuff 
+
+def evaluate(out_path, correlation_matrix, all_weights, topk):
     M = 10
     f = 5
     k = 30
-    
-    total_topic_dist = np.array(pd.read_csv('src\\data\\results2\\total_topic_dist.csv').drop(columns=['Unnamed: 0']))
     
     item_topic =  pd.read_csv('src\data\\baseline_data\\baseline_testing_data.csv', skipinitialspace=True, usecols=['article_id', 'topical_vector', 'source_partisan_score'])
     item_polarity = pd.read_csv('src\data\\baseline_data\\baseline_testing_data.csv', skipinitialspace=True, usecols=['article_id', 'source_partisan_score'])
 
     user_item_matrix = pd.read_csv("src\\data\\CF_test_correlation\\user_item_matrix.csv").drop(columns=['Unnamed: 0'])
+    # holdouts = pd.read_csv("src\\data\\CF_test_correlation\\holdouts.csv").drop(columns=['Unnamed: 0'])
+    
+    # user_item_matrix = pd.DataFrame(np.add(user_item_matrix.to_numpy(), holdouts.to_numpy()))
 
     item_list = pd.read_csv('src\data\\baseline_data\\baseline_testing_data.csv', skipinitialspace=True, usecols=['article_id']).to_numpy()
 
@@ -187,9 +294,9 @@ def evaluate():
     
     ##using item_topic[]
     
-    correlation_matrix = pd.read_csv("src\\data\\baseline_data\\CF\\correlation_matrix.csv").drop(columns=['Unnamed: 0']).to_numpy()
+    # correlation_matrix = pd.read_csv("src\\data\\baseline_data\\CF\\correlation_matrix.csv").drop(columns=['Unnamed: 0']).to_numpy()
     
-    all_weights = pd.read_csv('src\\data\\baseline_data\\CF\\per_user\\trained_h_5_per_user.csv').drop(columns=['Unnamed: 0'])
+    # all_weights = pd.read_csv('src\\data\\baseline_data\\CF\\per_user\\trained_h_5_per_user.csv').drop(columns=['Unnamed: 0'])
     
     class_oracle_vectors = np.zeros((9,14,2))
     
@@ -218,6 +325,7 @@ def evaluate():
     # ## per user: (topic coverage, diversity correct topics)
     # user_metrics = np.empty((len(list), 2))
     user_metrics = []
+    no_neighbour_count = 0
 
     for u in range(user_item_matrix.shape[0]):
         
@@ -230,15 +338,17 @@ def evaluate():
         
         h = torch.tensor([all_weights.iloc[u]], dtype=torch.float64, device='cuda' if torch.cuda.is_available() else 'cpu')
         
-        predicted_rating_matrix = create_predicted_rating_matrix(f,k, h, correlation_matrix)
+        predicted_rating_matrix = create_predicted_rating_matrix(f,k, h, user_item_matrix, correlation_matrix, topk)
         
         predicted_row = predicted_rating_matrix[u].cpu().numpy()
         filtered_pred = predicted_row[available_indices]
 
+        
         ## top M
         M = min(len(filtered_pred), M)
         if M == 0:
-            print('Uh oh! No neighbors!')
+            print('Uh oh! No recommendations!')
+            no_neighbour_count += 1
             continue
         
         
@@ -250,22 +360,22 @@ def evaluate():
         
         chosen_items = available_indices[retain_ind]
         
-        chosen_topic = [
-        "abortion",
-        "environment",
-        "guns",
-        "health care",
-        "immigration",
-        "LGBTQ",
-        "racism",
-        "taxes",
-        "technology",
-        "trade",
-        "trump impeachment",
-        "us military",
-        "us 2020 election",
-        "welfare",
-        ]
+        # chosen_topic = [
+        # "abortion",
+        # "environment",
+        # "guns",
+        # "health care",
+        # "immigration",
+        # "LGBTQ",
+        # "racism",
+        # "taxes",
+        # "technology",
+        # "trade",
+        # "trump impeachment",
+        # "us military",
+        # "us 2020 election",
+        # "welfare",
+        # ]
         
         
         ## original 
@@ -347,6 +457,7 @@ def evaluate():
             count += 1
         
         chosen_ids = item_list[chosen_items]
+        chosen_topics = np.zeros(70)
             
         for item_id in range(len(chosen_ids)):
          
@@ -360,7 +471,7 @@ def evaluate():
             o_topics = ast.literal_eval(item_topic.loc[item_topic['article_id'] == int(oracle_id)]['topical_vector'].values[0])
             c_topics = ast.literal_eval(item_topic.loc[item_topic['article_id'] == int(c_id)]['topical_vector'].values[0])
             
-            
+            chosen_topics = np.add(chosen_topics, c_topics)
             
             chosen_topic_indices = np.where(np.array(c_topics) > 0)[0] // 5
             
@@ -401,81 +512,80 @@ def evaluate():
             
         ##TODO
         ##NEEDS TO CHANGE FOR ALL USERS - should add the number of recommendations of different types - add a 14 x 5 array
-        user_metrics.append({'topic_hit': percent_topic_hit / len(chosen_ids), 'diversity': diversity_over_hit_topics / percent_topic_hit})
+        user_metrics.append({'topic_hit': percent_topic_hit / len(chosen_ids), 'diversity': diversity_over_hit_topics / percent_topic_hit, 'chosen_items': chosen_ids, 'topic_bias_matrix': chosen_topics})
     
     
-    pd.DataFrame(user_metrics).to_csv('src\\data\\baseline_data\\total_eval\\all_user_metrics.csv')
+    pd.DataFrame(user_metrics).to_csv(out_path)
            
     random_performance = np.divide(oracle_utility_across_classes, np.multiply(M, number_of_users))
     model_performance = np.divide(chosen_utility_across_classes, np.multiply(M, number_of_users))
     
     
     
+    # for i in range(recommendation_stats.shape[0]):
+        
+    #     pd.DataFrame(recommendation_stats[i], columns=['-2', '-1', '0', '1', '2'], index=['abortion', 'environment', 'guns', 'health care', 'immigration', 'LGBTQ', 'racism', 'taxes',
+    #       'technology', 'trade', 'trump impeachment', 'us military', 'us 2020 election', 'welfare']).to_csv(f'src\\data\\baseline_data\\recommended\\{classes[i]}.csv')
+    # #     # pd.DataFrame(oracle_stats[i], columns=['-2', '-1', '0', '1', '2'], index=['abortion', 'environment', 'guns', 'health care', 'immigration', 'LGBTQ', 'racism', 'taxes',
+    # #     #   'technology', 'trade', 'trump impeachment', 'us military', 'us 2020 election', 'welfare']).to_csv(f'src\\data\\results2\\oracle\\{classes[i]}.csv')
+        
+    #     pd.DataFrame(chosen_per_class_score[i]).to_csv(f'src\\data\\baseline_data\\recommended\\partisan_dist_{classes[i]}.csv')
+    # #     # pd.DataFrame(oracle_per_class_score[i]).to_csv(f'src\\data\\results2\\oracle\\partisan_dist_{classes[i]}.csv')
+    # #     pass
     
-    for i in range(recommendation_stats.shape[0]):
-        
-        pd.DataFrame(recommendation_stats[i], columns=['-2', '-1', '0', '1', '2'], index=['abortion', 'environment', 'guns', 'health care', 'immigration', 'LGBTQ', 'racism', 'taxes',
-          'technology', 'trade', 'trump impeachment', 'us military', 'us 2020 election', 'welfare']).to_csv(f'src\\data\\baseline_data\\recommended\\{classes[i]}.csv')
-    #     # pd.DataFrame(oracle_stats[i], columns=['-2', '-1', '0', '1', '2'], index=['abortion', 'environment', 'guns', 'health care', 'immigration', 'LGBTQ', 'racism', 'taxes',
-    #     #   'technology', 'trade', 'trump impeachment', 'us military', 'us 2020 election', 'welfare']).to_csv(f'src\\data\\results2\\oracle\\{classes[i]}.csv')
-        
-        pd.DataFrame(chosen_per_class_score[i]).to_csv(f'src\\data\\baseline_data\\recommended\\partisan_dist_{classes[i]}.csv')
-    #     # pd.DataFrame(oracle_per_class_score[i]).to_csv(f'src\\data\\results2\\oracle\\partisan_dist_{classes[i]}.csv')
-    #     pass
     
-    
-    for i in range(len(classes)):
-        cl = classes[i]
+    # for i in range(len(classes)):
+    #     cl = classes[i]
 
-        print(f'{cl}: ')
+    #     print(f'{cl}: ')
         
-        fig, (ax1, ax2) = plt.subplots(1, 2)
+    #     fig, (ax1, ax2) = plt.subplots(1, 2)
 
-        arr = recommendation_stats[i]
-        arr2 = original_interaction_stats[i]
+    #     arr = recommendation_stats[i]
+    #     arr2 = original_interaction_stats[i]
 
-        # total = np.sum(arr.flatten())
-        # print(total)
-        # arr /= total
+    #     # total = np.sum(arr.flatten())
+    #     # print(total)
+    #     # arr /= total
         
-        total = np.sum(arr2.flatten())
-        arr2 /= total
+    #     total = np.sum(arr2.flatten())
+    #     arr2 /= total
         
         
-        fig, axes = plt.subplots(1, 3, figsize=(12, 8), constrained_layout=True)  # Horizontally stacked
+    #     fig, axes = plt.subplots(1, 3, figsize=(12, 8), constrained_layout=True)  # Horizontally stacked
 
-        # Plot the first heatmap
-        im1 = axes[0].imshow(arr, cmap='Blues', interpolation='none')
-        axes[0].set_title(f"Topic Cov: {user_metrics[i]['topic_hit']}, Div: {user_metrics[i]['diversity']}")  # Title for the first subplot
-        axes[0].set_xticks(np.arange(5))
-        axes[0].set_xticklabels([-2, -1, 0, 1, 2])
-        axes[0].set_yticks(np.arange(len(chosen_topic)))
-        axes[0].set_yticklabels(chosen_topic)
+    #     # Plot the first heatmap
+    #     im1 = axes[0].imshow(arr, cmap='Blues', interpolation='none')
+    #     axes[0].set_title(f"Topic Cov: {user_metrics[i]['topic_hit']}, Div: {user_metrics[i]['diversity']}")  # Title for the first subplot
+    #     axes[0].set_xticks(np.arange(5))
+    #     axes[0].set_xticklabels([-2, -1, 0, 1, 2])
+    #     axes[0].set_yticks(np.arange(len(chosen_topic)))
+    #     axes[0].set_yticklabels(chosen_topic)
 
-        # Plot the second heatmap
-        im2 = axes[1].imshow(arr2, cmap='Blues', interpolation='none')
-        axes[1].set_title("User Interest relative to Ratings")  # Title for the second subplot
-        axes[1].set_xticks(np.arange(5))
-        axes[1].set_xticklabels([-2, -1, 0, 1, 2])
-        axes[1].set_yticks(np.arange(len(chosen_topic)))
-        axes[1].set_yticklabels(['','','','','','','','','','','','','',''])
-
-
-        im3 = axes[2].imshow(total_topic_dist, cmap='Blues', interpolation='none')
-        axes[2].set_title("Topic Distribution in Item Set")  # Title for the second subplot
-        axes[1].set_xticks(np.arange(0))
-        axes[1].set_xticklabels([])
-        axes[2].set_yticks(np.arange(len(chosen_topic)))
-        axes[2].set_yticklabels(['','','','','','','','','','','','','',''])
+    #     # Plot the second heatmap
+    #     im2 = axes[1].imshow(arr2, cmap='Blues', interpolation='none')
+    #     axes[1].set_title("User Interest relative to Ratings")  # Title for the second subplot
+    #     axes[1].set_xticks(np.arange(5))
+    #     axes[1].set_xticklabels([-2, -1, 0, 1, 2])
+    #     axes[1].set_yticks(np.arange(len(chosen_topic)))
+    #     axes[1].set_yticklabels(['','','','','','','','','','','','','',''])
 
 
-        # Add colorbars for both plots
-        fig.colorbar(im1, ax=axes[0], orientation='vertical', shrink=0.8)
-        fig.colorbar(im2, ax=axes[1], orientation='vertical', shrink=0.8)
-        fig.colorbar(im3, ax=axes[2], orientation='vertical', shrink=0.8)
+    #     im3 = axes[2].imshow(total_topic_dist, cmap='Blues', interpolation='none')
+    #     axes[2].set_title("Topic Distribution in Item Set")  # Title for the second subplot
+    #     axes[1].set_xticks(np.arange(0))
+    #     axes[1].set_xticklabels([])
+    #     axes[2].set_yticks(np.arange(len(chosen_topic)))
+    #     axes[2].set_yticklabels(['','','','','','','','','','','','','',''])
 
-        # Save the figure
-        plt.savefig(f'src\\data\\baseline_data\\graphs\\{cl}.png')
+
+    #     # Add colorbars for both plots
+    #     fig.colorbar(im1, ax=axes[0], orientation='vertical', shrink=0.8)
+    #     fig.colorbar(im2, ax=axes[1], orientation='vertical', shrink=0.8)
+    #     fig.colorbar(im3, ax=axes[2], orientation='vertical', shrink=0.8)
+
+    #     # Save the figure
+    #     plt.savefig(f'src\\data\\baseline_data\\graphs\\{cl}.png')
 
         
 
@@ -534,7 +644,32 @@ def oracle_eval():
     
 ##not really testing recommendation diversity at the individual level - should try this
 if __name__ == '__main__':
-    # create_predicted_rating_matrix()
-    evaluate()
     
-    # simple_choice_calc()
+    correlation_matrix = pd.read_csv("src\\data\\baseline_data\\CF\\correlation_matrix.csv").drop(columns=['Unnamed: 0']).to_numpy()
+    
+    weight_paths = ['FN_embedding_CPC_h_5_per_user.csv', 'FN_rating_target_CPC_h_5_per_user.csv', 'NN_rating_target_CPC_h_5_per_user.csv','NN_embedding_CPC_h_5_per_user.csv']
+    top = [False, False, True, True]
+    paths = ['FN_Embedding_CPC.csv', 'FN_Rating_CPC.csv', 'NN_Rating_CPC.csv', 'NN_Embedding_CPC.csv']
+    
+    for i in range(4):
+    
+        all_weights = pd.read_csv(f'src\\data\\baseline_data\\CF\\per_user\\{weight_paths[i]}').drop(columns=['Unnamed: 0'])
+        
+        print(paths[i], "---------------------------------------------------")
+    
+        out_path = f'src\\data\\baseline_data\\total_eval\\results\\{paths[i]}'
+        
+        evaluate(out_path, correlation_matrix, all_weights, top[i])
+        
+        user_metrics = pd.read_csv(out_path).drop(columns=['Unnamed: 0'])
+    
+        log(user_metrics)
+        
+    # correlation_matrix = pd.read_csv("src\\data\\baseline_data\\CF\\rating_correlation_matrix.csv").drop(columns=['Unnamed: 0']).to_numpy()
+    # all_weights = pd.read_csv(f'src\\data\\baseline_data\\CF\\per_user\\NN_rating_target_rating_corr_h_5_per_user.csv').drop(columns=['Unnamed: 0'])
+    # evaluate('src\\data\\baseline_data\\total_eval\\results\\NN_Rating_Rating.csv', correlation_matrix, all_weights, topk=True)
+    
+    
+    # ##have to change some stuff
+    # user_metrics = pd.read_csv('src\\data\\baseline_data\\total_eval\\results\\NN_Rating_Rating.csv').drop(columns=['Unnamed: 0'])
+    # log(user_metrics)

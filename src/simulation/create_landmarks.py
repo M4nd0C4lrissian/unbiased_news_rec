@@ -86,22 +86,27 @@ if __name__ == '__main__':
     ## we randomly sample from item_topics, pulling their embeddings from the associated .pt file, until we have a certain number M of 'hits' - interacted-with articles
     ## instead of constantly reloading large pt files, we do uniform sampling across all 32 batches of 1000 for each user type - first we need to load the users and
     ## calculate user choice
-
-    topic_lists = pd.read_csv("src\data\\landmark_data\\topics_in_embedding_order.csv")
+    test_data = pd.read_csv('src\data\\baseline_data\\baseline_testing_data.csv')
+    test_data = test_data[['article_id', 'topical_vector']]
+    #topic_lists = pd.read_csv("src\data\\landmark_data\\topics_in_embedding_order.csv")
     ##Change here once more data
-    num_batches = 16
+    num_batches = 1
 
-    batch_size = 1000
-    num_pos_samples = 5
+    batch_size = 4000
+    num_pos_samples = 20
 
-    source_path = "D:\Bert-Embeddings\\training_data\\"
+    source_path = "D:\Bert-Embeddings\\test_data\\"
     type_landmarks = np.zeros((9, encoder_output_dim), dtype = np.float64)
     total_utility_score = np.zeros(9)
+    
+    text_embedding_file = torch.load(source_path + f"text_embedding_{0}.pt")
+    title_embedding_file = torch.load(source_path + f"title_embedding_{0}.pt")
+    
+    for i in range(1,4):
+        text_embedding_file = torch.cat((text_embedding_file, torch.load(source_path + f"text_embedding_{i}.pt")), dim=0)
+        title_embedding_file = torch.cat((title_embedding_file, torch.load(source_path + f"title_embedding_{i}.pt")), dim=0)
 
     for i in range(num_batches):
-
-        text_embedding_file = torch.load(source_path + f"text_embedding_{i}.pt")
-        title_embedding_file = torch.load(source_path + f"title_embedding_{i}.pt")
 
         print('Loaded embeddings!')
 
@@ -112,14 +117,15 @@ if __name__ == '__main__':
 
                 while pos_samples < num_pos_samples:
                     r = np.random.randint(0, batch_size)
+                    
+                    ## r is raw value from 0 to 4000, but we need to get the actual article_id - its equal to the index of the test-set
 
                     acc = i * batch_size + r
 
-                    topic_vector = ast.literal_eval(topic_lists.iloc[acc]['topical_vector'])
+                    topic_vector = ast.literal_eval(test_data.iloc[acc]['topical_vector'])
 
                     did_interact, utility_score = user_interaction(class_utility[type], topic_vector)
 
-                    # if did_interact:
                     if did_interact:
                     
                         print(f'User interacted with a utility score of {utility_score}')
@@ -146,7 +152,7 @@ if __name__ == '__main__':
         type_landmarks[type] /= total_utility_score[type]
 
     df = pd.DataFrame(type_landmarks)
-    df.to_csv("src\data\\landmark_data\\landmark_embeddings.csv")
+    df.to_csv("src\data\\baseline_data\landmarks\\landmark_embeddings.csv")
     print(total_utility_score)
 
 
