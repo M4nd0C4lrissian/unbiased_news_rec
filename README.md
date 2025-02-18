@@ -54,14 +54,3 @@ All of the code is mine, asides from stuff sourced from:
   year={2021}
 }
 ```
-
-Those files are called: 
-
-- collaborative_filtering.py
-- oracle.py
-- rand_content.py
-- sim_functions.py
-- user_choice.py
-- user_generation.py
-
-They're mostly for generating the 1000 test user mdoels and exemplar user models. The only data you'll see included here is the data used for that. I only used functions from the last two for simulating user choice, and just copy pasted them in the files needed. The rest of the code I completed myself.
