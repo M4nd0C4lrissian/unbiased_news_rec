@@ -1,3 +1,5 @@
+# Constructing Political Coordinates
+
 Except for the following files:
 
 - collaborative_filtering.py
@@ -35,15 +37,11 @@ Evaluation is very fragmented for the time being, though the main behavior can b
 
 - get_eval_data.py
 
-# The Interaction between Political Typology and Filter Bubbles in News Recommendation Algorithms
-
-None of the data is here (far too much)
-
 The original dataset can be found here:
 
 [Data is here.](https://www.dropbox.com/scl/fo/31bvt18zjkql2zorltx6k/AHRjtozu_8w_xuixWmRkv88?rlkey=w5bg63wi551trq6trwsjqrxwc&st=fhbbaf5m&dl=0)
 
-All of the code is mine, asides from stuff sourced from: 
+All of the code is ours, asides from stuff sourced from (listed above) which includes the original dataset: 
 
 ```bibtex
 @inproceedings{liu2021interaction,
