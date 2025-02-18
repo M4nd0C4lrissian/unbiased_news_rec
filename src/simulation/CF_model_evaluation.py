@@ -10,6 +10,8 @@ import baseline_per_user_gcf as BGCF
 from collections import defaultdict
 import copy
 
+import warnings
+
 def multi_weighted_graph_convolution(x_i, Bs, h):
 
   """
@@ -134,28 +136,11 @@ def altered_normalized_bottom_k_with_bias(bi, k, selection_count, index_set, alp
     return norm_B
 
 ## can use for the pure rating ones too
-def create_predicted_rating_matrix(f, k, h, user_item_matrix, correlation_matrix, top_k):
- 
-    correlation_matrix = pd.read_csv("src\\data\\baseline_data\\CF\\correlation_matrix.csv").drop(columns=['Unnamed: 0']).to_numpy()
-    user_item_matrix = pd.read_csv("src\\data\\CF_test_correlation\\user_item_matrix.csv").drop(columns=['Unnamed: 0'])
-    np.fill_diagonal(correlation_matrix, 0)
-    B = copy.deepcopy(correlation_matrix)
-
-    ## was 100 in training - I did not realize 
-    
-    if top_k:
-        Bi = BGCF.normalized_top_k_with_bias(B, k)
-    else:
-        selection_count = defaultdict(int)
-        index_set = set()
-        Bi = altered_normalized_bottom_k_with_bias(B, k, selection_count, index_set, alpha=0.0)
-        # Bi = BGCF.normalized_bottom_k_with_bias(B, k)
-        
-    B_i = BGCF.construct_convolutions_with_user_check(Bi, f)
+def create_predicted_rating_matrix(h, user_item_matrix, B_i):
 
     # s = torch.nn.Sigmoid()
     # h = s(h)
-    print('Here')
+    # print('Here')
 
     with torch.no_grad():
     
@@ -218,6 +203,7 @@ def log(user_metrics):
     curr = 0
     for i in range(len(classes)):
         class_users = user_metrics.iloc[curr: curr + number_of_users[i]]
+        class_users = class_users.loc[(class_users!=0).any(axis=1)]
         print(f'Class {classes[i]}----------------- ')
         print('Topic coverage: ')
         print(class_users['topic_hit'].describe())
@@ -240,7 +226,7 @@ def evaluate(out_path, correlation_matrix, all_weights, topk):
     item_polarity = pd.read_csv('src\data\\baseline_data\\baseline_testing_data.csv', skipinitialspace=True, usecols=['article_id', 'source_partisan_score'])
 
     user_item_matrix = pd.read_csv("src\\data\\CF_test_correlation\\user_item_matrix.csv").drop(columns=['Unnamed: 0'])
-    # holdouts = pd.read_csv("src\\data\\CF_test_correlation\\holdouts.csv").drop(columns=['Unnamed: 0'])
+    holdouts = pd.read_csv("src\\data\\CF_test_correlation\\holdouts.csv").drop(columns=['Unnamed: 0'])
     
     # user_item_matrix = pd.DataFrame(np.add(user_item_matrix.to_numpy(), holdouts.to_numpy()))
 
@@ -326,39 +312,87 @@ def evaluate(out_path, correlation_matrix, all_weights, topk):
     # user_metrics = np.empty((len(list), 2))
     user_metrics = []
     no_neighbour_count = 0
+    
+    np.fill_diagonal(correlation_matrix, 0)
+    B = copy.deepcopy(correlation_matrix)
+    B2 = copy.deepcopy(correlation_matrix)
+    ## was 100 in training - I did not realize 
+    
+    # if topk:
+    #     Bi = BGCF.normalized_top_k_with_bias(B, k)
+    # else:
+    #     selection_count = defaultdict(int)
+    #     index_set = set()
+    #     Bi = altered_normalized_bottom_k_with_bias(B, k, selection_count, index_set, alpha=0.1)
+    #     # Bi = BGCF.normalized_bottom_k_with_bias(B, k)
+        
+    Bi = BGCF.normalized_top_k_with_bias(B, k)
+        
+    B_i = BGCF.construct_convolutions_with_user_check(Bi, f)
+    
+    
+    ##FN
+    selection_count = defaultdict(int)
+    index_set = set()
+    Bi2 = BGCF.altered_normalized_bottom_k_with_bias(B2, k, selection_count, index_set, alpha=0.1)
+        
+    B_i2 = BGCF.construct_convolutions_with_user_check(Bi2, f)
 
     for u in range(user_item_matrix.shape[0]):
         
+        print('User: ', u)
+        
         row = user_item_matrix.iloc[u]
+        
+        #####HERE
+        # hold_row = holdouts.iloc[u]
+        # valid_mask = ((row == 0) & (hold_row == 0))
+        
         valid_mask = (row == 0)
         filtered_row = row[valid_mask]
         available_indices = np.where(valid_mask)[0]
         
         c = user_classes.iloc[u].values[0]
         
-        h = torch.tensor([all_weights.iloc[u]], dtype=torch.float64, device='cuda' if torch.cuda.is_available() else 'cpu')
+        h1 = torch.tensor([all_weights[0].iloc[u]], dtype=torch.float64, device='cuda' if torch.cuda.is_available() else 'cpu')
+        h2 = torch.tensor([all_weights[1].iloc[u]], dtype=torch.float64, device='cuda' if torch.cuda.is_available() else 'cpu')
         
-        predicted_rating_matrix = create_predicted_rating_matrix(f,k, h, user_item_matrix, correlation_matrix, topk)
         
-        predicted_row = predicted_rating_matrix[u].cpu().numpy()
+        if np.sum(h1.numpy()[0]) == 0:
+            user_metrics.append({'topic_hit': 0, 'diversity': 0, 'chosen_items': 0, 'topic_bias_matrix': 0})
+            no_neighbour_count += 1
+            continue
+        
+        predicted_rating_matrix = create_predicted_rating_matrix(h1, user_item_matrix, B_i)
+        
+        
+        predicted_rating_matrix2 = create_predicted_rating_matrix(h2, user_item_matrix, B_i2)
+        
+        pred1 = predicted_rating_matrix[u].cpu().numpy()
+        pred2 = predicted_rating_matrix2[u].cpu().numpy()
+        
+        predicted_row = pred1
+        predicted_row2 = pred2
+        
         filtered_pred = predicted_row[available_indices]
-
+        filtered_pred2 = predicted_row2[available_indices]
         
         ## top M
         M = min(len(filtered_pred), M)
         if M == 0:
             print('Uh oh! No recommendations!')
+            user_metrics.append({'topic_hit': 0, 'diversity': 0, 'chosen_items': 0, 'topic_bias_matrix': 0})
             no_neighbour_count += 1
             continue
         
         
-        retain_ind = np.argsort(-filtered_pred)[:M]
-        retain_val = filtered_pred[retain_ind]
+        retain_ind1 = np.argsort(-filtered_pred)[:M//2]
+        retain_ind2 = np.argsort(-filtered_pred2)[:M//2]
         
         ## M random
         
         
-        chosen_items = available_indices[retain_ind]
+        chosen_items = np.unique(np.concat((available_indices[retain_ind1], available_indices[retain_ind2]), 0))
         
         # chosen_topic = [
         # "abortion",
@@ -402,7 +436,8 @@ def evaluate(out_path, correlation_matrix, all_weights, topk):
             
             for top in topic_ind:
                 total_mag[top][int(rated_label+2)] += 1
-            
+        ##TODO
+        ### build interactions as so:
         interaction = np.nan_to_num(np.divide(orig, total_mag))
         
         original_interaction_stats[class_map[c]] = interaction
@@ -512,10 +547,14 @@ def evaluate(out_path, correlation_matrix, all_weights, topk):
             
         ##TODO
         ##NEEDS TO CHANGE FOR ALL USERS - should add the number of recommendations of different types - add a 14 x 5 array
-        user_metrics.append({'topic_hit': percent_topic_hit / len(chosen_ids), 'diversity': diversity_over_hit_topics / percent_topic_hit, 'chosen_items': chosen_ids, 'topic_bias_matrix': chosen_topics})
+        if percent_topic_hit == 0:
+            user_metrics.append({'topic_hit': 0, 'diversity': None, 'chosen_items': chosen_ids, 'topic_bias_matrix': chosen_topics})
+        else:
+            user_metrics.append({'topic_hit': percent_topic_hit / len(chosen_ids), 'diversity': diversity_over_hit_topics / percent_topic_hit, 'chosen_items': chosen_ids, 'topic_bias_matrix': chosen_topics})
     
     
     pd.DataFrame(user_metrics).to_csv(out_path)
+    print("Number without recommendations: ", no_neighbour_count)
            
     random_performance = np.divide(oracle_utility_across_classes, np.multiply(M, number_of_users))
     model_performance = np.divide(chosen_utility_across_classes, np.multiply(M, number_of_users))
@@ -645,21 +684,21 @@ def oracle_eval():
 ##not really testing recommendation diversity at the individual level - should try this
 if __name__ == '__main__':
     
-    correlation_matrix = pd.read_csv("src\\data\\baseline_data\\CF\\correlation_matrix.csv").drop(columns=['Unnamed: 0']).to_numpy()
+    with warnings.catch_warnings(action="ignore"):
     
-    weight_paths = ['FN_embedding_CPC_h_5_per_user.csv', 'FN_rating_target_CPC_h_5_per_user.csv', 'NN_rating_target_CPC_h_5_per_user.csv','NN_embedding_CPC_h_5_per_user.csv']
-    top = [False, False, True, True]
-    paths = ['FN_Embedding_CPC.csv', 'FN_Rating_CPC.csv', 'NN_Rating_CPC.csv', 'NN_Embedding_CPC.csv']
-    
-    for i in range(4):
-    
-        all_weights = pd.read_csv(f'src\\data\\baseline_data\\CF\\per_user\\{weight_paths[i]}').drop(columns=['Unnamed: 0'])
+        correlation_matrix = pd.read_csv("src\\data\\baseline_data\\CF\\correlation_matrix.csv").drop(columns=['Unnamed: 0']).to_numpy()
         
-        print(paths[i], "---------------------------------------------------")
+        weight_paths = ['joint_NN_embedding_CPC_h_5_per_user.csv', 'joint_FN_embedding_CPC_h_5_per_user.csv']
+        top = [True]
+        paths = 'NN_Rating_Rating.csv'
     
-        out_path = f'src\\data\\baseline_data\\total_eval\\results\\{paths[i]}'
+        all_weights = [pd.read_csv(f'src\\data\\baseline_data\\CF\\per_user\\{weight_paths[0]}').drop(columns=['Unnamed: 0']), pd.read_csv(f'src\\data\\baseline_data\\CF\\per_user\\{weight_paths[1]}').drop(columns=['Unnamed: 0'])]
         
-        evaluate(out_path, correlation_matrix, all_weights, top[i])
+        print(paths, "---------------------------------------------------")
+    
+        out_path = f'src\\data\\baseline_data\\total_eval\\results\\{paths}'
+        
+        evaluate(out_path, correlation_matrix, all_weights, top)
         
         user_metrics = pd.read_csv(out_path).drop(columns=['Unnamed: 0'])
     

@@ -196,6 +196,7 @@ def cbnf_algorithm(user_vector, candidate_news, ran_idx, partisan_weights, rando
     np.random.seed(ran_idx)
 
     history = {}
+    ### pass in full dataframe of cls label and source partisan score
     issue_mapping = get_issue_mapping(candidate_news)
 
     pos_pks, neg_pks = random_bootstrap(
