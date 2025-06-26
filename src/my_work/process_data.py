@@ -17,29 +17,30 @@ def process(training_data_path, label_data_path, common_col, new_col):
 
     return labels
 
+### build testing data in embedding order
 
 if __name__ == '__main__':
 
-    # training_data_path = 'unbiased_news_rec\\src\\data\\auto_encoder_training\\bert_validation_set.csv'
-    # label_data_path = 'unbiased_news_rec\\src\\data\\auto_encoder_training\\validation_mask.csv'
+    training_data_path = 'unbiased_news_rec\\src\\data\\auto_encoder_training\\bert_validation_set.csv'
+    label_data_path = 'src\data\\baseline_data\\baseline_testing_data.csv'
 
-    # common_col = 'article_id'
-    # new_col = 'source_partisan_score'
-
-    # labels = process(training_data_path, label_data_path, common_col, new_col)
-
-    # df = pd.DataFrame(labels, columns=['article_id', 'source_partisan_score'])
-    # df.to_csv('unbiased_news_rec\\src\\data\\auto_encoder_training\\validation_partisan_labels.csv')
-    
-    
-    training_data_path = 'src\\data\\auto_encoder_training\\bert_validation_set.csv'
-    label_data_path = 'src\\data\\landmark_data\\item_topic_vector.csv'
-    
     common_col = 'article_id'
-    new_col = 'topical_vector'
-    
+    new_col = 'source_partisan_score'
+
     labels = process(training_data_path, label_data_path, common_col, new_col)
+
+    df = pd.DataFrame(labels, columns=['article_id', 'source_partisan_score'])
+    df.to_csv('unbiased_news_rec\\src\\data\\auto_encoder_training\\validation_partisan_labels.csv')
+    print('hi there')
     
-    # df = pd.DataFrame(labels, columns=[common_col, new_col])
-    labels.to_csv('src\\data\\landmark_data\\validation_topics_in_embedding_order.csv')
+    # training_data_path = 'src\\data\\auto_encoder_training\\bert_testing_set.csv'
+    # label_data_path = 'src\\data\\landmark_data\\item_topic_vector.csv'
+    
+    # common_col = 'article_id'
+    # new_col = 'topical_vector'
+    
+    # labels = process(training_data_path, label_data_path, common_col, new_col)
+    
+    # # df = pd.DataFrame(labels, columns=[common_col, new_col])
+    # labels.to_csv('src\\data\\landmark_data\\testing_topics_in_embedding_order.csv')
     

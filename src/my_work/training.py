@@ -298,7 +298,7 @@ if __name__ == '__main__':
     
     
     
-    encoder = Encoder(bert_dim, intermediate_dim, encoder_output_dim)
+    # encoder = Encoder(bert_dim, intermediate_dim, encoder_output_dim)
     epochs = 10
     
     embedding_batch_num = 1000
@@ -313,40 +313,48 @@ if __name__ == '__main__':
     dataset = CD(labels_file, [text_embedding_file], [title_embedding_file], [0, embedding_batch_num])
     
     data_loader = DataLoader(dataset, batch_size= embedding_batch_num // 20, shuffle=True)
-    optimizer = optim.Adam(encoder.parameters(), lr=0.001)
+    # optimizer = optim.Adam(encoder.parameters(), lr=0.001)
     
-    for epoch in range(epochs):
-        total_loss = 0.0
-        for batch_idx, (bert1, bert2, polarity_labels) in enumerate(data_loader):
-            # inputs, labels = inputs.to(device), labels.to(device)
+    # for epoch in range(epochs):
+    #     total_loss = 0.0
+    #     for batch_idx, (bert1, bert2, polarity_labels) in enumerate(data_loader):
+    #         # inputs, labels = inputs.to(device), labels.to(device)
             
-            concatenated = torch.cat((bert1, bert2), dim=-1)
-            # Forward pass
-            embeddings, c_j = encoder(concatenated)
+    #         concatenated = torch.cat((bert1, bert2), dim=-1)
+    #         # Forward pass
+    #         embeddings, c_j = encoder(concatenated)
             
-            # Compute the combined loss
-            loss = orthogonality_loss_with_labels(c_j, polarity_labels, 3, weight_magnitude=0.1, target_norm=1.0)
+    #         # Compute the combined loss
+    #         loss = orthogonality_loss_with_labels(c_j, polarity_labels, 3, weight_magnitude=0.1, target_norm=1.0)
             
-            # Backpropagation and optimization
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+    #         # Backpropagation and optimization
+    #         optimizer.zero_grad()
+    #         loss.backward()
+    #         optimizer.step()
             
-            total_loss += loss.item()
+    #         total_loss += loss.item()
     
-        print(f"Epoch {epoch + 1}/{epochs}, Loss: {total_loss:.4f}")
+    #     print(f"Epoch {epoch + 1}/{epochs}, Loss: {total_loss:.4f}")
     
-    for param in encoder.self_attention.parameters():
-        print('Here 1')
-        param.requires_grad = False
+    # for param in encoder.self_attention.parameters():
+    #     print('Here 1')
+    #     param.requires_grad = False
     
-    for param in encoder.fcj.parameters():
-        print('Here 2')
-        param.requires_grad = False
+    # for param in encoder.fcj.parameters():
+    #     print('Here 2')
+    #     param.requires_grad = False
 
     model = DualDecoderModel(bert_dim, intermediate_dim, encoder_output_dim, num_classes)
     
-    model.encoder = encoder
+    # model = MyModel()
+    total_params = sum(p.numel() for p in model.parameters())
+    print(f"Number of parameters: {total_params}")
+        
+    # model.encoder = encoder
+    
+    total_params = sum(p.numel() for p in model.polarity_decoder.parameters())
+    print(f"Number of parameters: {total_params}")
+        
     
     optimizer = optim.Adam(
         filter(lambda p: p.requires_grad, model.parameters()), 

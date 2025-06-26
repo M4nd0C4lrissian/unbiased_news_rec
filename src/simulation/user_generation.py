@@ -246,11 +246,11 @@ def generation(num_users, csv_file, dist=1, equal=False, random_number=42):
 
 if __name__ == "__main__":
 
-    csv_file_path = "unbiased_news_rec\\src\\data\\pew0423.csv"
+    csv_file_path = "src\\data\\pew0423.csv"
     record = generation(1000, csv_file_path, 1)
 
     # This is for the CF algorithm.
-    with open("1000users.pkl", "wb") as f:
+    with open("testing_1000users.pkl", "wb") as f:
         pickle.dump(record, f)
 
     # Average the synthetic users for content-based algorithm
@@ -262,6 +262,6 @@ if __name__ == "__main__":
 
         print(key, value.shape)
 
-        file_name = "unbiased_news_rec\\src\\data\\synthetic_user\\" + key + ".csv"
+        file_name = "src\\data\\synthetic_user\\" + key + ".csv"
 
         np.savetxt(file_name, value_ave, delimiter=",")
