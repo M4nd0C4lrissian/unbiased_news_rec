@@ -8,6 +8,7 @@
 # what might be better is to not do topic specific, so that either model is
 # not penalized for diversifying over topics
 
+from scipy.stats import wasserstein_distance
 import numpy as np
 import pandas as pd
 import math
@@ -31,6 +32,10 @@ def total_variation(p, q):
 def js_divergence(p, q):
     m = (p + q) / 2
     return 0.5 * kl_divergence(p, m) + 0.5 * kl_divergence(q, m)
+
+def w_distance(p, q):
+    support = np.arange(-2, 3)
+    return wasserstein_distance(support, support, p, q) / (support[-1] - support[0])
 
 def distribution_stat(user_recommendations, metric, alpha=0.01):
 
@@ -108,14 +113,14 @@ if __name__ == '__main__':
         return np.array([float(x) for x in s.strip('[]').split() if x])
 
     CPC_recs = pd.read_csv(
-        'src\\data\\baseline_data\\total_eval\\results\\FN_Embedding_CPC.csv',
+        'src\\data\\baseline_data\\total_eval\\results\\FN_Rating_CPC.csv',
         converters={'topic_bias_matrix': parse_numpy_style_array},
         usecols=['topic_bias_matrix']
     ).to_numpy()
     
     CPC_recs = np.vstack(CPC_recs[:, 0])
     
-    class_divergence = distribution_stat(CPC_recs, kl_divergence, alpha=0.000)
+    class_divergence = distribution_stat(CPC_recs, w_distance, alpha=0.000)
     pass
 
     GCF_NN_recs = pd.read_csv(
@@ -126,6 +131,6 @@ if __name__ == '__main__':
     
     GCF_NN_recs = np.vstack(GCF_NN_recs[:, 0])
     
-    gcf_nn_class_divergence = distribution_stat(GCF_NN_recs, kl_divergence, alpha=0.000)
+    gcf_nn_class_divergence = distribution_stat(GCF_NN_recs, w_distance, alpha=0.000)
     pass
     

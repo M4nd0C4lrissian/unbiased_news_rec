@@ -2,6 +2,10 @@ import numpy as np
 import pandas as pd
 import math
 
+def discrete_variance(probs):
+    support = np.arange(-2, 3)
+    return np.average((support - np.average(support, weights=probs))**2, weights=probs)
+
     
 class_map = {'bystanders': 0, 'core conserv': 8, 'country first conserv': 7, 'devout and diverse': 4, 'disaffected democrats': 3, 'market skeptic repub': 6, 'new era enterprisers': 5, 'oppty democrats': 2, 'solid liberas': 1}
 number_of_users = [49, 193, 133, 108, 69, 116, 116, 63, 153]
@@ -33,6 +37,7 @@ for i in range(len(classes)):
         q+=1
         
 class_entropy = {}
+class_variances = {}
         
 for c in range(len(classes)):
     
@@ -42,6 +47,7 @@ for c in range(len(classes)):
     true_ind = sum(number_of_users[:class_ind])
     
     class_means = []
+    variances = []
     
     #iterating through the class members
     for i in range(true_ind, true_ind + number_of_users[class_ind]):
@@ -64,9 +70,11 @@ for c in range(len(classes)):
         
         norm_entrop = sum([- t_i * math.log2(t_i) for t_i in total_bias_preferences]) / math.log2(len(total_bias_preferences))
         class_means.append(norm_entrop)
+        variances.append(discrete_variance(total_bias_preferences))
         # class_std_dev_sum += std
     # so now we take the average of the average and std_dev entropy over topics, across a class - this feels weird 
     class_entropy[classes[c]] = {'Average over topics' : np.mean(class_means), 'Average Deviation' : np.std(class_means)}
+    class_variances[classes[c]] = {'Average Variance' : np.mean(variances)}
 pass
             
 

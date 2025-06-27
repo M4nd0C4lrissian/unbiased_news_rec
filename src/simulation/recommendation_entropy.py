@@ -3,6 +3,9 @@ import pandas as pd
 import math
 import ast
 
+def discrete_variance(probs):
+    support = np.arange(-2, 3)
+    return np.average((support - np.average(support, weights=probs))**2, weights=probs)
 
 def recommendation_entropy(user_recommendations):
 
@@ -22,6 +25,7 @@ def recommendation_entropy(user_recommendations):
     ]
     
     class_entropy = {}
+    class_variances = {}
     
     #keep it simple - get the matrices, sum them up element-wise
     # reshape them, sum up the columns and calculate the entropy
@@ -34,6 +38,7 @@ def recommendation_entropy(user_recommendations):
         true_ind = sum(number_of_users[:class_ind])
         
         class_means = []
+        variances = []
         
         #iterating through the class members
         for i in range(true_ind, true_ind + number_of_users[class_ind]):
@@ -46,10 +51,12 @@ def recommendation_entropy(user_recommendations):
         
             norm_entrop = sum([0 if t_i == 0 else - t_i * math.log2(t_i) for t_i in total_bias_preferences]) / math.log2(len(total_bias_preferences))
             class_means.append(norm_entrop)
+            variances.append(discrete_variance(total_bias_preferences))
         
         class_entropy[classes[c]] = {'Average over all topics' : np.mean(class_means), 'std' : np.std(class_means)} 
+        class_variances[classes[c]] = {'Average Variance' : np.mean(variances)}
     
-    return class_entropy
+    return class_entropy, class_variances
 
 if __name__ == '__main__':
     def parse_numpy_style_array(s):
@@ -64,7 +71,7 @@ if __name__ == '__main__':
     
     CPC_recs = np.vstack(CPC_recs[:, 0])
     
-    class_entropy = recommendation_entropy(CPC_recs)
+    class_entropy, class_var = recommendation_entropy(CPC_recs)
     pass
 
     GCF_NN_recs = pd.read_csv(
@@ -75,6 +82,6 @@ if __name__ == '__main__':
     
     GCF_NN_recs = np.vstack(GCF_NN_recs[:, 0])
     
-    gcf_nn_class_entropy = recommendation_entropy(GCF_NN_recs)
+    gcf_nn_class_entropy, gcf_var = recommendation_entropy(GCF_NN_recs)
     pass
     
