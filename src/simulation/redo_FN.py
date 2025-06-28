@@ -18,75 +18,19 @@ from my_work.custom_article_embedding_dataset import CustomArticleEmbeddingDatas
 
 from collections import defaultdict
 
-
-
-def normalized_bottom_k_with_bias(Bi, k, alpha=0.0):
-    """
-    Probabilistically adjust selection to promote fuller coverage of users.
-    
-    Args:
-    - Bi: Correlation matrix.
-    - k: Number of users to select per user.
-    - alpha: Bias adjustment factor (0.0 = no bias, 1.0 = full bias to less-selected users).
-    
-    Returns:
-    - norm_B: Normalized matrix with retained bottom-k values.
-    """
-    # global selection_count  # Track selection frequency globally
-    
-    selection_count = defaultdict(int)
-    index_set = set()
-    
-    norm_B = np.zeros_like(Bi, dtype=np.float64)
-    
-    Bi = 1 - abs(Bi)
-
-    for u in range(Bi.shape[0]):
-        row = Bi[u]
-
-        # Filter out NaNs and negative values
-        valid_mask = ~np.isnan(row)
-        filtered_row = row[valid_mask]
-
-        if len(filtered_row) == 0:
-            norm_B[u] = np.zeros_like(row)
-            print(f'user: {u} has no viable users')
-            continue
-
-        # Adjust scores to include selection bias
-        original_indices = np.where(valid_mask)[0]
-        adjusted_scores = filtered_row.copy()
-
-        for idx, orig_idx in enumerate(original_indices):
-            # Adjust scores based on selection count
-            adjusted_scores[idx] -= alpha * (1 / (1 + selection_count[orig_idx]))
-
-        # Get indices of the bottom-k adjusted values
-        retain_ind = np.argsort(-adjusted_scores)[:k]
-        retain_val = filtered_row[retain_ind]
-
-        # Update the global selection count
-        for ind in original_indices[retain_ind]:
-            selection_count[ind] += 1
-            index_set.add(ind)
-
-        # Normalize retained values
-        s = np.sum(retain_val)
-        if s == 0:
-            norm_B[u] = np.zeros_like(row)
-            print('BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB')
-            continue
-
-        # Create a new row with only the selected values retained
-        b = np.zeros_like(row)
-        b[original_indices[retain_ind]] = retain_val
-        b = b / s  # Normalize to sum to 1
-
-        norm_B[u] = b
-
-    return norm_B
-
 #################
+
+
+def lr_schedule(step):
+
+    warmup_steps = 8  # Number of steps to warm up
+    total_steps = epochs  # Total training steps
+    decay_rate = 0.98    # Exponential decay rate
+    if step < warmup_steps:
+        return step / warmup_steps  # Linear warmup
+    else:
+        return decay_rate ** ((step - warmup_steps) / (total_steps - warmup_steps))  # Exponential decay
+
 
 def altered_normalized_bottom_k_with_bias(Bi, k, selection_count, index_set, alpha=0.0):
     """
@@ -102,7 +46,7 @@ def altered_normalized_bottom_k_with_bias(Bi, k, selection_count, index_set, alp
     """
     # global selection_count, index_set  # Track selection frequency globally
     
-    norm_B = np.zeros_like(Bi, dtype=np.float64)
+    norm_B = np.zeros_like(Bi, dtype=np.float32)
     
     Bi = -Bi
 
@@ -164,7 +108,7 @@ def normalized_top_k_with_bias(Bi, k, alpha=0.0):
     - norm_B: Normalized matrix with retained bottom-k values.
     """
     # global selection_count  # Track selection frequency globally
-    norm_B = np.zeros_like(Bi, dtype=np.float64)
+    norm_B = np.zeros_like(Bi, dtype=np.float32)
     
     selection_count = defaultdict(int)
     index_set = set()
@@ -217,18 +161,20 @@ def normalized_top_k_with_bias(Bi, k, alpha=0.0):
 
     return norm_B
 
-def construct_convolutions_with_user_check(Bi, f):
+def furthest_neighbours_construct_convolutions(closest, furthest, f):
     """
     Construct graph convolution tensors, log sparsity trends, and check for users with no non-zero values.
     """
     # Convert NumPy array to a PyTorch tensor
-    Bi_torch = torch.tensor(copy.deepcopy(Bi), dtype=torch.float64, device='cuda' if torch.cuda.is_available() else 'cpu')
+    Bi_torch = torch.tensor(copy.deepcopy(furthest), dtype=torch.float32, device='cuda' if torch.cuda.is_available() else 'cpu')
+    
+    B_nearest = torch.tensor(copy.deepcopy(closest), dtype=torch.float32, device='cuda' if torch.cuda.is_available() else 'cpu')
 
     num_rows, num_cols = Bi_torch.shape
     # Initialize a PyTorch tensor to store the results
-    tensor = torch.zeros((f, num_rows, num_cols), device=Bi_torch.device, dtype=torch.float64)
+    tensor = torch.zeros((f, num_rows, num_cols), device=Bi_torch.device, dtype=torch.float32)
 
-    # Set the first layer to Bi
+    # Set the first layer to be the furthest_neighbor correlation
     tensor[0] = Bi_torch
 
     # List to store sparsity percentages and zero-user counts for each layer
@@ -237,7 +183,7 @@ def construct_convolutions_with_user_check(Bi, f):
 
     for i in range(1, f):
         # Perform batched matrix multiplication across the third dimension
-        tensor[i] = torch.matmul(tensor[i-1].float(), Bi_torch.float())
+        tensor[i] = torch.matmul(tensor[i-1].float(), B_nearest.float())
         tensor[i] = torch.nan_to_num(tensor[i], nan=0.0)
 
         # Calculate sparsity: proportion of non-zero entries
@@ -277,11 +223,11 @@ def construct_convolutions_with_user_check(Bi, f):
 
 def construct_convolutions(Bi, f):
     # Convert NumPy array to a PyTorch tensor
-    Bi_torch = torch.tensor(Bi, dtype=torch.float64, device='cuda' if torch.cuda.is_available() else 'cpu')
+    Bi_torch = torch.tensor(Bi, dtype=torch.float32, device='cuda' if torch.cuda.is_available() else 'cpu')
 
     num_rows, num_cols = Bi_torch.shape
     # Initialize a PyTorch tensor to store the results
-    tensor = torch.zeros((f, num_rows, num_cols), device=Bi_torch.device, dtype=torch.float64)
+    tensor = torch.zeros((f, num_rows, num_cols), device=Bi_torch.device, dtype=torch.float32)
 
     # Set the first layer to Bi
     tensor[0] = Bi_torch
@@ -324,7 +270,6 @@ def multi_weighted_graph_convolution(x_i, Bs, h):
     Returns:
     - A 1 x U shifted and weighted rating vector.
   """
-  I = 4000
   
   x_shifted = torch.stack([torch.matmul(x_i.T, Bs[k]) for k in range(len(h))])
 
@@ -341,10 +286,10 @@ def multi_weighted_graph_convolution(x_i, Bs, h):
 
 
 ## a few things - need to see where the gradient is falling off (might be fine) AND need to pass into this user vectors, right now we're being passed item rating vectors
-def get_predicted_embedding(x_hat, M, user_item_matrix, encoder_output_dim, partisan_labels, val_data, encoder, polarity_free_decoder, batch_size = 1000):
-    item_list = user_item_matrix.columns
+def get_predicted_embedding(x_hat, M, encoder_output_dim, partisan_labels, val_data, encoder, polarity_free_decoder, item_list):
+   
 
-    combined_embedding = torch.zeros(encoder_output_dim, dtype=torch.float64, device=x_hat.device)
+    combined_embedding = torch.zeros(encoder_output_dim, dtype=torch.float32, device=x_hat.device)
 
     # HERE
     valid_mask = ~torch.isnan(x_hat) & (x_hat != 0)
@@ -365,7 +310,7 @@ def get_predicted_embedding(x_hat, M, user_item_matrix, encoder_output_dim, part
     original_indices = torch.nonzero(valid_mask, as_tuple=True)[0][retain_ind]
     b[original_indices] = top_values
 
-    item_ids = item_list[original_indices.cpu().numpy()]  # Assuming item_list is not a tensor
+    item_ids = item_list[original_indices]  # Assuming item_list is not a tensor
 
     
     total_score = 0
@@ -399,75 +344,43 @@ def process_data(data):
 
 def train_weights_per_user(matrix, rat_targets, train_dataset, most_corr,  B, M, true_interest_model, labels_and_topics, encoder, polarity_free_decoder, encoder_output_dim = 128, k=10, f=3, lr=0.01, epochs=10):
     
-    # s = torch.nn.ReLU()
-    
-    # weights_per_user = pd.read_csv(f'src\\data\\baseline_data\\CF\\per_user\\trained_h_{f}_per_user.csv').drop(columns=['Unnamed: 0']).to_numpy()
-    
-    # weights_per_user = np.pad(weights_per_user, ((0, 1000 - weights_per_user.shape[0]), (0, 0)), mode='constant', constant_values=0)
-    # weights_per_user = pd.read_csv(f'src\\data\\baseline_data\\CF\\per_user\\FN_embedding_CPC_h_{f}_per_user.csv').drop(columns=['Unnamed: 0']).to_numpy()
-    # weights_per_user2 = pd.read_csv(f'src\\data\\baseline_data\\CF\\per_user\\FN_rating_target_CPC_h_{f}_per_user.csv').drop(columns=['Unnamed: 0']).to_numpy()
-    # weights_per_user3 = pd.read_csv(f'src\\data\\baseline_data\\CF\\per_user\\NN_rating_target_CPC_h_{f}_per_user.csv').drop(columns=['Unnamed: 0']).to_numpy()
-    # weights_per_user4 = pd.read_csv(f'src\\data\\baseline_data\\CF\\per_user\\NN_embedding_CPC_h_{f}_per_user.csv').drop(columns=['Unnamed: 0']).to_numpy()
-    
-    weights_per_user3 = np.zeros((matrix.shape[0], f))
-    weights_per_user2 = np.zeros((matrix.shape[0], f))
     weights_per_user = np.zeros((matrix.shape[0], f))
-    weights_per_user4 = np.zeros((matrix.shape[0], f))
-    
+    matrix = torch.tensor(copy.deepcopy(matrix.to_numpy()), dtype=torch.float32, device='cuda' if torch.cuda.is_available() else 'cpu')
+    item_list = torch.arange(matrix.shape[1], device=matrix.device)
     selection_count = defaultdict(int)
     index_set = set()
     
     #FN - embedding - CPC - 1
-    Bi = altered_normalized_bottom_k_with_bias(copy.deepcopy(B), k, selection_count, index_set, alpha=0.1)
-    B_i = construct_convolutions_with_user_check(Bi, f)
-    
-    print("Hello")
+    B_furthest = altered_normalized_bottom_k_with_bias(copy.deepcopy(B), k, selection_count, index_set, alpha=0.0)
     
     selection_count = defaultdict(int)
     index_set = set() 
+    B_nearest = normalized_top_k_with_bias(copy.deepcopy(B), k, alpha=0.0)
     
-    ##FN - rating - CPC - 2
-    Mi = altered_normalized_bottom_k_with_bias(copy.deepcopy(B), k, selection_count, index_set, alpha=0.1)
-    M_i = construct_convolutions_with_user_check(Mi, f)
-    
-    #NN - rating - CPC - 3
-    Ni = normalized_top_k_with_bias(copy.deepcopy(most_corr), k)
-    N_i = construct_convolutions_with_user_check(Ni, f)
-    
-    ##NN - embedding - CPC - 4
-    Ei = normalized_top_k_with_bias(copy.deepcopy(most_corr), k)
-    E_i = construct_convolutions_with_user_check(Ei, f)
+    B_i = furthest_neighbours_construct_convolutions(B_nearest, B_furthest, f)
 
     unviable_users = 0
+    
+    processed = true_interest_model['interest model'].apply(process_data)
+
+    # Step 2: Convert to a 2D list
+    data_list = processed.tolist()  # list of flat float lists
+
+    # Step 3: Convert to a PyTorch tensor
+    true_interest_model = torch.tensor(data_list, dtype=torch.float32, device='cuda' if torch.cuda.is_available() else 'cpu')
+    
     
     for user_id in range(matrix.shape[0]):
         
         print(f'Training for user {user_id}')
         
-        h = torch.nn.Parameter(torch.rand(f, 1, requires_grad=True, dtype=torch.float64, device='cuda' if torch.cuda.is_available() else 'cpu'))
+        h = torch.nn.Parameter(torch.rand(f, 1, requires_grad=True, dtype=torch.float32, device='cuda' if torch.cuda.is_available() else 'cpu'))
         optimizer = optim.SGD([h], lr=lr)
         
-        h2 = torch.nn.Parameter(torch.rand(f, 1, requires_grad=True, dtype=torch.float64, device='cuda' if torch.cuda.is_available() else 'cpu'))
-        optimizer2 = optim.Adam([h2], lr=0.1)
-        
-        h3 = torch.nn.Parameter(torch.rand(f, 1, requires_grad=True, dtype=torch.float64, device='cuda' if torch.cuda.is_available() else 'cpu'))
-        optimizer3 = optim.Adam([h3], lr=0.1)
-        
-        h4 = torch.nn.Parameter(torch.rand(f, 1, requires_grad=True, dtype=torch.float64, device='cuda' if torch.cuda.is_available() else 'cpu'))
-        optimizer4 = optim.Adam([h4], lr=lr)
-        
         # Scheduler
-        scheduler = LambdaLR(optimizer, lr_lambda=lr_schedule)
-        scheduler2 = LambdaLR(optimizer2, lr_lambda=lr_schedule)
-        scheduler3 = LambdaLR(optimizer3, lr_lambda=lr_schedule)
-        scheduler4 = LambdaLR(optimizer4, lr_lambda=lr_schedule)
+        # scheduler = LambdaLR(optimizer, lr_lambda=lr_schedule)
         
         total_loss = 0
-        total_loss2 = 0
-        
-        ## do I know how to do this? - should the targets really just be predicting only the true ratings on the things we have ratings for - yeah I guess
-        ratings_target = np.array(rat_targets[user_id])
-        rating_indices = np.where(ratings_target > 0)[0]
 
         broken_out = False
 
@@ -475,23 +388,12 @@ def train_weights_per_user(matrix, rat_targets, train_dataset, most_corr,  B, M,
             
             ##remake rating matrix w.r.t h
 
-            x = torch.tensor(copy.deepcopy(matrix.to_numpy()), dtype=torch.float64, device='cuda' if torch.cuda.is_available() else 'cpu')
-            x2 = torch.tensor(copy.deepcopy(matrix.to_numpy()), dtype=torch.float64, device='cuda' if torch.cuda.is_available() else 'cpu')
-            x3 = torch.tensor(copy.deepcopy(matrix.to_numpy()), dtype=torch.float64, device='cuda' if torch.cuda.is_available() else 'cpu')
-            x4 = torch.tensor(copy.deepcopy(matrix.to_numpy()), dtype=torch.float64, device='cuda' if torch.cuda.is_available() else 'cpu')
+            x = matrix
 
             ##rating_matrix - 1000 by 4000
             ## FN - embedding
             x_hat = multi_weighted_graph_convolution(x, B_i, h).T
             
-            #FN
-            x_hat_2 = multi_weighted_graph_convolution(x2, M_i, h2).T
-            
-            #NN
-            x_hat_3 = multi_weighted_graph_convolution(x3, N_i, h3).T
-            
-            ## NN - embedding
-            x_hat_4 = multi_weighted_graph_convolution(x4, E_i, h4).T
             
             if torch.isnan(x_hat).any():
                 print("Found NaN in x_hat")
@@ -502,17 +404,10 @@ def train_weights_per_user(matrix, rat_targets, train_dataset, most_corr,  B, M,
             
             u_hat = x_hat[user_id]
                       
-            ### NN embedding target
-            u_hat4 = x_hat_4[user_id]
-
-        
             ##print('Predicting embedding...')
             
-            beta = 0.5
-            
             try:
-                FN_predicted_user_embedding = get_predicted_embedding(u_hat, M, matrix, encoder_output_dim, labels_and_topics, train_dataset, encoder, polarity_free_decoder)
-                NN_predicted_user_embedding = get_predicted_embedding(u_hat4, M, matrix, encoder_output_dim, labels_and_topics, train_dataset, encoder, polarity_free_decoder)
+                FN_predicted_user_embedding = get_predicted_embedding(u_hat, M, encoder_output_dim, labels_and_topics, train_dataset, encoder, polarity_free_decoder, item_list=item_list)
             
             except ValueError as e:
                 print("Error : ", e)
@@ -520,79 +415,26 @@ def train_weights_per_user(matrix, rat_targets, train_dataset, most_corr,  B, M,
                 broken_out = True
                 break
     
-            actual_user_embedding = torch.tensor(process_data(true_interest_model.iloc[user_id]['interest model']), dtype=torch.float64, device='cuda' if torch.cuda.is_available() else 'cpu')
+            actual_user_embedding = true_interest_model[user_id]
                 
-                
-            loss = torch.mean((actual_user_embedding - torch.add((1-beta)*FN_predicted_user_embedding, beta*NN_predicted_user_embedding)) ** 2)
+            loss = torch.mean((actual_user_embedding - FN_predicted_user_embedding) ** 2)
             
-            
-            print(loss.item())
+            # print(loss.item())
             loss.backward(retain_graph=True)
-        
-            
             optimizer.step()
-            scheduler.step()
+            # scheduler.step()
             optimizer.zero_grad()
             
-            optimizer4.step()
-            scheduler4.step()
-            optimizer4.zero_grad()
-            
-            #FN ########################################################
-            target = torch.tensor(ratings_target[rating_indices], dtype=torch.float64, device='cuda' if torch.cuda.is_available() else 'cpu')
-            
-            u_hat2 = x_hat_2[user_id]
-            
-            #NN ########################################################
-            
-            u_hat3 = x_hat_3[user_id]
-
-            loss2 = torch.mean((target - torch.add((1-beta)*u_hat2[rating_indices], beta*u_hat3[rating_indices]) ** 2)) 
-
-            print(loss2.item())
-            loss2.backward(retain_graph=True)
-            
-            ##print(f'Gradient: {h.grad}')
-            optimizer2.step()
-            scheduler2.step()
-            optimizer2.zero_grad()
-            
-            optimizer3.step()
-            scheduler3.step()
-            optimizer3.zero_grad()
-            
-            #NN - embedding #############################################################
-
         print(f"Average Epoch {epoch + 1}/{epochs}, Loss: {total_loss / epochs}")
-        print(f"FN: {epoch + 1}/{epochs}, Loss: {total_loss2 / epochs}")
-        # print(f"NN: {epoch + 1}/{epochs}, Loss: {total_loss3 / epochs}")
-        # print(f"NN + embedding: {epoch + 1}/{epochs}, Loss: {total_loss4 / epochs}")
-        
-        # if broken_out:
-        #     weights_per_user[user_id] = np.zeros(f)
-        #     pd.DataFrame(weights_per_user).to_csv(f'src\\data\\baseline_data\\CF\\per_user\\joint_FN_embedding_CPC_h_{f}_per_user.csv')
-            
-        #     weights_per_user2[user_id] = np.zeros(f)
-        #     pd.DataFrame(weights_per_user2).to_csv(f'src\\data\\baseline_data\\CF\\per_user\\joint_FN_rating_target_CPC_h_{f}_per_user.csv')
-            
-        #     weights_per_user3[user_id] = np.zeros(f)
-        #     pd.DataFrame(weights_per_user3).to_csv(f'src\\data\\baseline_data\\CF\\per_user\\joint_NN_rating_target_CPC_h_{f}_per_user.csv')
-            
-        #     weights_per_user4[user_id] = np.zeros(f)
-        #     pd.DataFrame(weights_per_user4).to_csv(f'src\\data\\baseline_data\\CF\\per_user\\joint_NN_embedding_CPC_h_{f}_per_user.csv')
 
+        
+        if broken_out:
+            weights_per_user[user_id] = np.zeros(f)
+            pd.DataFrame(weights_per_user).to_csv(f'src\\data\\baseline_data\\CF\\per_user\\redoing_FN_embedding_CPC_h_{f}_per_user.csv')
 
-        # weights_per_user[user_id] = h.cpu().detach().numpy().flatten()
-        # pd.DataFrame(weights_per_user).to_csv(f'src\\data\\baseline_data\\CF\\per_user\\joint_FN_embedding_CPC_h_{f}_per_user.csv')
-        
-        # weights_per_user2[user_id] = h2.cpu().detach().numpy().flatten()
-        # pd.DataFrame(weights_per_user2).to_csv(f'src\\data\\baseline_data\\CF\\per_user\\joint_FN_rating_target_CPC_h_{f}_per_user.csv')
-        
-        # weights_per_user3[user_id] = h3.cpu().detach().numpy().flatten()
-        # pd.DataFrame(weights_per_user3).to_csv(f'src\\data\\baseline_data\\CF\\per_user\\joint_NN_rating_target_CPC_h_{f}_per_user.csv')
-         
-        # weights_per_user4[user_id] = h4.cpu().detach().numpy().flatten()
-        # pd.DataFrame(weights_per_user4).to_csv(f'src\\data\\baseline_data\\CF\\per_user\\joint_NN_embedding_CPC_h_{f}_per_user.csv')
+        else:
+            weights_per_user[user_id] = h.cpu().detach().numpy().flatten()
+            pd.DataFrame(weights_per_user).to_csv(f'src\\data\\baseline_data\\CF\\per_user\\redoing_FN_embedding_CPC_h_{f}_per_user.csv')
         
         print('Unviable users: ', unviable_users)
     return
@@ -604,6 +446,7 @@ if __name__ == '__main__':
     encoder_output_dim = 128
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    print('Device: ', device)
 
     encoder = Encoder(bert_dim, intermediate_dim, encoder_output_dim).to(device)
     polarity_free_decoder = Decoder(encoder_output_dim, intermediate_dim, encoder_output_dim).to(device)
@@ -662,17 +505,6 @@ if __name__ == '__main__':
     epochs = 40
     ##each user has 10 logged interactions
 
-    def lr_schedule(step):
-    
-        warmup_steps = 8  # Number of steps to warm up
-        total_steps = epochs  # Total training steps
-        decay_rate = 0.98    # Exponential decay rate
-        if step < warmup_steps:
-            return step / warmup_steps  # Linear warmup
-        else:
-            return decay_rate ** ((step - warmup_steps) / (total_steps - warmup_steps))  # Exponential decay
-
-
     ##change to using labels_and_topics
     print('starting training')
-    trained_h = train_weights_per_user(user_item_matrix, rat_targets, train_dataset, most_corr, B, M, true_interest_model, labels_and_topics, encoder, polarity_free_decoder, encoder_output_dim=128, k = 30, f = f, lr = 0.05, epochs = epochs)
+    trained_h = train_weights_per_user(user_item_matrix, rat_targets, train_dataset, most_corr, B, M, true_interest_model, labels_and_topics, encoder, polarity_free_decoder, encoder_output_dim=128, k = 30, f = f, lr = 0.1, epochs = epochs)
