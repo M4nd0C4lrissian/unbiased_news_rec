@@ -342,7 +342,9 @@ def process_data(data):
     
     return numbers
 
-def train_weights_per_user(matrix, train_dataset, most_corr,  B, M, true_interest_model, labels_and_topics, encoder, polarity_free_decoder, encoder_output_dim = 128, k=10, f=3, lr=0.01, epochs=10):
+def train_weights_per_user(matrix, rat_targets, train_dataset, most_corr,  B, M, true_interest_model, labels_and_topics, encoder, polarity_free_decoder, encoder_output_dim = 128, k=10, f=3, lr=0.01, epochs=10):
+    
+    rat_targets = torch.tensor(rat_targets, dtype=torch.float32, device='cuda' if torch.cuda.is_available() else 'cpu')
     
     weights_per_user = np.zeros((matrix.shape[0], f))
     matrix = torch.tensor(copy.deepcopy(matrix.to_numpy()), dtype=torch.float32, device='cuda' if torch.cuda.is_available() else 'cpu')
@@ -353,8 +355,8 @@ def train_weights_per_user(matrix, train_dataset, most_corr,  B, M, true_interes
     #FN - embedding - CPC - 1
     B_furthest = altered_normalized_bottom_k_with_bias(copy.deepcopy(B), k, selection_count, index_set, alpha=0.0)
     
-    selection_count = defaultdict(int)
-    index_set = set() 
+    # selection_count = defaultdict(int)
+    # index_set = set() 
     B_nearest = normalized_top_k_with_bias(copy.deepcopy(B), k, alpha=0.0)
     
     B_i = furthest_neighbours_construct_convolutions(B_nearest, B_furthest, f)
@@ -383,6 +385,9 @@ def train_weights_per_user(matrix, train_dataset, most_corr,  B, M, true_interes
         total_loss = 0
 
         broken_out = False
+        
+        ratings_target = rat_targets[user_id]
+        rating_indices = torch.where(ratings_target > 0)[0]
 
         for epoch in range(epochs):
             
@@ -407,19 +412,17 @@ def train_weights_per_user(matrix, train_dataset, most_corr,  B, M, true_interes
             ##print('Predicting embedding...')
             
             try:
-                FN_predicted_user_embedding = get_predicted_embedding(u_hat, M, encoder_output_dim, labels_and_topics, train_dataset, encoder, polarity_free_decoder, item_list=item_list)
+                target = ratings_target[rating_indices]
             
             except ValueError as e:
                 print("Error : ", e)
                 unviable_users+=1
                 broken_out = True
                 break
-    
-            actual_user_embedding = true_interest_model[user_id]
-                
-            loss = torch.mean((actual_user_embedding - FN_predicted_user_embedding) ** 2)
+                    
+            loss = torch.mean((target - u_hat[rating_indices]) ** 2)
             
-            print(loss.item())
+            # print(loss.item())
             loss.backward(retain_graph=True)
             optimizer.step()
             # scheduler.step()
@@ -430,11 +433,11 @@ def train_weights_per_user(matrix, train_dataset, most_corr,  B, M, true_interes
         
         if broken_out:
             weights_per_user[user_id] = np.zeros(f)
-            pd.DataFrame(weights_per_user).to_csv(f'src\\data\\baseline_data\\CF\\per_user\\{k}_FN_embedding_CPC_h_{f}_per_user.csv')
+            pd.DataFrame(weights_per_user).to_csv(f'src\\data\\baseline_data\\CF\\per_user\\{k}_FN_rating_rating_h_{f}_per_user.csv')
 
         else:
             weights_per_user[user_id] = h.cpu().detach().numpy().flatten()
-            pd.DataFrame(weights_per_user).to_csv(f'src\\data\\baseline_data\\CF\\per_user\\{k}_embed_FN_embedding_CPC_h_{f}_per_user.csv')
+            pd.DataFrame(weights_per_user).to_csv(f'src\\data\\baseline_data\\CF\\per_user\\{k}_FN_rating_rating_h_{f}_per_user.csv')
         
         print('Unviable users: ', unviable_users)
     return
@@ -483,22 +486,22 @@ if __name__ == '__main__':
         
     user_item_matrix = pd.read_csv("src\\data\\CF_test_correlation\\user_item_matrix.csv").drop(columns=['Unnamed: 0'])
     
-    # holdouts = pd.read_csv("src\\data\\CF_test_correlation\\holdouts.csv").drop(columns=['Unnamed: 0'])
+    holdouts = pd.read_csv("src\\data\\CF_test_correlation\\holdouts.csv").drop(columns=['Unnamed: 0'])
     
-    # # rat_targets = np.sum([np.array(holdouts.values), np.array(user_item_matrix.values)], axis=0)
-    # rat_targets = np.array(holdouts.values)
+    # rat_targets = np.sum([np.array(holdouts.values), np.array(user_item_matrix.values)], axis=0)
+    rat_targets = np.array(holdouts.values)
 
     #1000 users by 128 interest embedding
     true_interest_model = pd.read_csv('src\\data\\baseline_data\\CF\\interest_models.csv').drop(columns=['Unnamed: 0'])
 
-    user_correlation_matrix = pd.read_csv("src\\data\\baseline_data\\CF\\correlation_matrix.csv").drop(columns=['Unnamed: 0']).to_numpy()    
+    user_correlation_matrix = pd.read_csv("src\\data\\baseline_data\\CF\\rating_correlation_matrix.csv").drop(columns=['Unnamed: 0']).to_numpy()    
 
     # Define the learning rate schedule
     ##hacky
     
     np.fill_diagonal(user_correlation_matrix, 0)
     
-    # most_corr = copy.deepcopy(user_correlation_matrix)
+    most_corr = copy.deepcopy(user_correlation_matrix)
     B = user_correlation_matrix
     M = 10
     f = 5
@@ -507,4 +510,4 @@ if __name__ == '__main__':
 
     ##change to using labels_and_topics
     print('starting training')
-    trained_h = train_weights_per_user(user_item_matrix, train_dataset, None, B, M, true_interest_model, labels_and_topics, encoder, polarity_free_decoder, encoder_output_dim=128, k = 8, f = f, lr = 0.1, epochs = epochs)
+    trained_h = train_weights_per_user(user_item_matrix, rat_targets, train_dataset, most_corr, B, M, true_interest_model, labels_and_topics, encoder, polarity_free_decoder, encoder_output_dim=128, k = 8, f = f, lr = 1, epochs = epochs)

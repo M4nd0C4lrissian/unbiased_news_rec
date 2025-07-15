@@ -73,9 +73,9 @@ def get_full_stats(user_item_matrix, user_metrics, out_path, users_choice, test_
             ## CTR, utility, topic coverage, bias diversity, PE@k
             running_total = np.zeros(6)
             
-            # items_chosen = list(map(int, re.findall(r'\d+', recs.iloc[j])))
-            temp = np.random.randint(0, 4000, 10, int)
-            items_chosen = [test_data.iloc[k]['article_id'] for k in temp]
+            items_chosen = list(map(int, re.findall(r'\d+', recs.iloc[j])))
+            # temp = np.random.randint(0, 4000, 10, int)
+            # items_chosen = [test_data.iloc[k]['article_id'] for k in temp]
             
             M = len(items_chosen)
             uv = np.array(users_choice.iloc[j])
@@ -194,7 +194,7 @@ def get_full_stats(user_item_matrix, user_metrics, out_path, users_choice, test_
             # print('------------------------')
             running_total[5] /= M
             running_total[4] += 1 - np.abs(left_recs / M - right_recs / M)  
-            ## CTR, utility, topic coverage, bias diversity, PE@k
+            ## CTR, utility, topic coverage, bias diversity, PE@k, AB
             ### percent bias diversity
             running_total[3] = np.nan_to_num(running_total[3] / topic_hit)
                     
@@ -217,7 +217,7 @@ def get_full_stats(user_item_matrix, user_metrics, out_path, users_choice, test_
   
         # curr += number_of_users[i]
 
-    pd.DataFrame(class_stats).to_csv(f'src\data\\baseline_data\\total_eval\\metrics\\metrics_random.csv')
+    pd.DataFrame(class_stats).to_csv(f'src\data\\baseline_data\\total_eval\\metrics\\metrics_{out_path}.csv')
     
 ## CTR, utility, topic coverage, bias diversity
 class_distribution = [49, 193, 133, 108, 69, 116, 116, 63, 153]
@@ -244,7 +244,7 @@ user_item_matrix = pd.read_csv('src\data\CF_test_correlation\\user_item_matrix.c
 
 users_choice = pd.read_csv("src\data\\baseline_data\\testing_user_choice_vectors.csv").drop(columns=['Unnamed: 0'])
 
-out_paths = ['FN_Embedding_CPC', 'FN_Rating_CPC', 'Joint_Embedding_CPC',  'Joint_Rating_CPC', 'NN_Embedding_CPC', 'NN_Rating_CPC', 'NN_Rating_Rating']
+out_paths = ['8_FN_Rating_Rating']
 
 for i in [0]:
     

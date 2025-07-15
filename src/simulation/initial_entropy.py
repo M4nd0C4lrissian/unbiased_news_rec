@@ -75,7 +75,7 @@ for c in range(len(classes)):
     # so now we take the average of the average and std_dev entropy over topics, across a class - this feels weird 
     class_entropy[classes[c]] = {'Average over topics' : np.mean(class_means), 'Average Deviation' : np.std(class_means)}
     class_variances[classes[c]] = {'Average Variance' : np.mean(variances)}
-pass
+print(class_entropy)
             
 
         

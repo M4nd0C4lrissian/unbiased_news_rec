@@ -12,6 +12,8 @@ import copy
 
 import warnings
 from redo_FN import furthest_neighbours_construct_convolutions
+from redo_rating_FN import normalized_top_k_with_bias
+
 
 def multi_weighted_graph_convolution(x_i, Bs, h):
 
@@ -221,7 +223,7 @@ def log(user_metrics):
 def evaluate(out_path, correlation_matrix, all_weights):
     M = 10
     f = 5
-    k = 30
+    k = 8
     
     item_topic =  pd.read_csv('src\data\\baseline_data\\baseline_testing_data.csv', skipinitialspace=True, usecols=['article_id', 'topical_vector', 'source_partisan_score'])
     item_polarity = pd.read_csv('src\data\\baseline_data\\baseline_testing_data.csv', skipinitialspace=True, usecols=['article_id', 'source_partisan_score'])
@@ -328,14 +330,19 @@ def evaluate(out_path, correlation_matrix, all_weights):
     
     with torch.no_grad():
         
-        
-        
+                
         selection_count = defaultdict(int)
-        index_set = set()
-        furthest = BGCF.altered_normalized_bottom_k_with_bias(copy.deepcopy(B), k, selection_count, index_set, alpha=0.0)
-        nearest = BGCF.normalized_top_k_with_bias(copy.deepcopy(B), k ,alpha = 0.0)
-            
-        B_i = furthest_neighbours_construct_convolutions(nearest, furthest, f)
+        index_set = set() 
+        
+        #FN - embedding - CPC - 1
+        B_furthest = altered_normalized_bottom_k_with_bias(copy.deepcopy(B), k, selection_count, index_set, alpha=0.0)
+        
+        # selection_count = defaultdict(int)
+        # index_set = set() 
+        B_nearest = normalized_top_k_with_bias(copy.deepcopy(B), k, alpha=0.0)
+        
+        B_i = furthest_neighbours_construct_convolutions(B_nearest, B_furthest, f)
+
 
         for u in range(user_item_matrix.shape[0]):
             
@@ -344,10 +351,9 @@ def evaluate(out_path, correlation_matrix, all_weights):
             row = user_item_matrix.iloc[u]
             
             #####HERE
-            # hold_row = holdouts.iloc[u]
-            # valid_mask = ((row == 0) & (hold_row == 0))
-            
-            valid_mask = (row == 0)
+            hold_row = holdouts.iloc[u]
+            valid_mask = ((np.array(row) == 0.0) & (np.array(hold_row) == 0.0))
+            # valid_mask = (row == 0)
             filtered_row = row[valid_mask]
             available_indices = np.where(valid_mask)[0]
             
@@ -552,72 +558,50 @@ def evaluate(out_path, correlation_matrix, all_weights):
         random_performance = np.divide(oracle_utility_across_classes, np.multiply(M, number_of_users))
         model_performance = np.divide(chosen_utility_across_classes, np.multiply(M, number_of_users))
         
+        for i in range(recommendation_stats.shape[0]):
+            
+            pd.DataFrame(recommendation_stats[i], columns=['-2', '-1', '0', '1', '2'], index=['abortion', 'environment', 'guns', 'health care', 'immigration', 'LGBTQ', 'racism', 'taxes',
+              'technology', 'trade', 'trump impeachment', 'us military', 'us 2020 election', 'welfare']).to_csv(f'src\\data\\baseline_data\\recommended\\{classes[i]}.csv')
+        #     # pd.DataFrame(oracle_stats[i], columns=['-2', '-1', '0', '1', '2'], index=['abortion', 'environment', 'guns', 'health care', 'immigration', 'LGBTQ', 'racism', 'taxes',
+        #     #   'technology', 'trade', 'trump impeachment', 'us military', 'us 2020 election', 'welfare']).to_csv(f'src\\data\\results2\\oracle\\{classes[i]}.csv')
+            
+            pd.DataFrame(chosen_per_class_score[i]).to_csv(f'src\\data\\baseline_data\\recommended\\partisan_dist_{classes[i]}.csv')
+        #     # pd.DataFrame(oracle_per_class_score[i]).to_csv(f'src\\data\\results2\\oracle\\partisan_dist_{classes[i]}.csv')
+        #     pass
         
         
-        # for i in range(recommendation_stats.shape[0]):
-            
-        #     pd.DataFrame(recommendation_stats[i], columns=['-2', '-1', '0', '1', '2'], index=['abortion', 'environment', 'guns', 'health care', 'immigration', 'LGBTQ', 'racism', 'taxes',
-        #       'technology', 'trade', 'trump impeachment', 'us military', 'us 2020 election', 'welfare']).to_csv(f'src\\data\\baseline_data\\recommended\\{classes[i]}.csv')
-        # #     # pd.DataFrame(oracle_stats[i], columns=['-2', '-1', '0', '1', '2'], index=['abortion', 'environment', 'guns', 'health care', 'immigration', 'LGBTQ', 'racism', 'taxes',
-        # #     #   'technology', 'trade', 'trump impeachment', 'us military', 'us 2020 election', 'welfare']).to_csv(f'src\\data\\results2\\oracle\\{classes[i]}.csv')
-            
-        #     pd.DataFrame(chosen_per_class_score[i]).to_csv(f'src\\data\\baseline_data\\recommended\\partisan_dist_{classes[i]}.csv')
-        # #     # pd.DataFrame(oracle_per_class_score[i]).to_csv(f'src\\data\\results2\\oracle\\partisan_dist_{classes[i]}.csv')
-        # #     pass
-        
-        
-        # for i in range(len(classes)):
-        #     cl = classes[i]
+            for i in range(len(classes)):
+                cl = classes[i]
+                print(f'{cl}: ')
+                
+                arr = recommendation_stats[i]
+                arr2 = original_interaction_stats[i]
+                
+                total = np.sum(arr2.flatten())
+                arr2 /= total
+                chosen_topics = chosen_topics.reshape((14, 5))
 
-        #     print(f'{cl}: ')
-            
-        #     fig, (ax1, ax2) = plt.subplots(1, 2)
+                fig, axes = plt.subplots(1, 3, figsize=(12, 8), constrained_layout=True)
 
-        #     arr = recommendation_stats[i]
-        #     arr2 = original_interaction_stats[i]
+                im1 = axes[0].imshow(arr, cmap='Blues', interpolation='none')
+                axes[0].set_title(f"Topic Cov: {user_metrics[i]['topic_hit']}, Div: {user_metrics[i]['diversity']}")
+                axes[0].set_xticks(np.arange(5))
+                axes[0].set_xticklabels([-2, -1, 0, 1, 2])
+                axes[0].set_yticks(np.arange(chosen_topics.shape[0]))
+                axes[0].set_yticklabels(chosen_topics)
 
-        #     # total = np.sum(arr.flatten())
-        #     # print(total)
-        #     # arr /= total
-            
-        #     total = np.sum(arr2.flatten())
-        #     arr2 /= total
-            
-            
-        #     fig, axes = plt.subplots(1, 3, figsize=(12, 8), constrained_layout=True)  # Horizontally stacked
+                im2 = axes[1].imshow(arr2, cmap='Blues', interpolation='none')
+                axes[1].set_title("User Interest relative to Ratings")
+                axes[1].set_xticks(np.arange(5))
+                axes[1].set_xticklabels([-2, -1, 0, 1, 2])
+                axes[1].set_yticks(np.arange(chosen_topics.shape[0]))
+                axes[1].set_yticklabels([''] * chosen_topics.shape[0])
 
-        #     # Plot the first heatmap
-        #     im1 = axes[0].imshow(arr, cmap='Blues', interpolation='none')
-        #     axes[0].set_title(f"Topic Cov: {user_metrics[i]['topic_hit']}, Div: {user_metrics[i]['diversity']}")  # Title for the first subplot
-        #     axes[0].set_xticks(np.arange(5))
-        #     axes[0].set_xticklabels([-2, -1, 0, 1, 2])
-        #     axes[0].set_yticks(np.arange(len(chosen_topic)))
-        #     axes[0].set_yticklabels(chosen_topic)
+                fig.colorbar(im1, ax=axes[0], orientation='vertical', shrink=0.8)
+                fig.colorbar(im2, ax=axes[1], orientation='vertical', shrink=0.8)
 
-        #     # Plot the second heatmap
-        #     im2 = axes[1].imshow(arr2, cmap='Blues', interpolation='none')
-        #     axes[1].set_title("User Interest relative to Ratings")  # Title for the second subplot
-        #     axes[1].set_xticks(np.arange(5))
-        #     axes[1].set_xticklabels([-2, -1, 0, 1, 2])
-        #     axes[1].set_yticks(np.arange(len(chosen_topic)))
-        #     axes[1].set_yticklabels(['','','','','','','','','','','','','',''])
-
-
-        #     im3 = axes[2].imshow(total_topic_dist, cmap='Blues', interpolation='none')
-        #     axes[2].set_title("Topic Distribution in Item Set")  # Title for the second subplot
-        #     axes[1].set_xticks(np.arange(0))
-        #     axes[1].set_xticklabels([])
-        #     axes[2].set_yticks(np.arange(len(chosen_topic)))
-        #     axes[2].set_yticklabels(['','','','','','','','','','','','','',''])
-
-
-        #     # Add colorbars for both plots
-        #     fig.colorbar(im1, ax=axes[0], orientation='vertical', shrink=0.8)
-        #     fig.colorbar(im2, ax=axes[1], orientation='vertical', shrink=0.8)
-        #     fig.colorbar(im3, ax=axes[2], orientation='vertical', shrink=0.8)
-
-        #     # Save the figure
-        #     plt.savefig(f'src\\data\\baseline_data\\graphs\\{cl}.png')
+                plt.savefig(f'src/data/baseline_data/graphs/{cl}.png')
+                plt.close(fig)
 
             
 
@@ -681,8 +665,8 @@ if __name__ == '__main__':
     
         correlation_matrix = pd.read_csv("src\\data\\baseline_data\\CF\\correlation_matrix.csv").drop(columns=['Unnamed: 0']).to_numpy()
         
-        weight_paths = ['redoing_FN_embedding_CPC_h_5_per_user.csv']
-        paths = 'redo_FN_Embedding_CPC.csv'
+        weight_paths = ['8_proper_FN_rating_CPC_h_5_per_user.csv']
+        paths = 'null.csv'
     
         all_weights = [pd.read_csv(f'src\\data\\baseline_data\\CF\\per_user\\{weight_paths[0]}').drop(columns=['Unnamed: 0'])]
         

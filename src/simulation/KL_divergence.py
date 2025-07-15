@@ -111,26 +111,35 @@ if __name__ == '__main__':
     def parse_numpy_style_array(s):
         # Strip brackets, split on spaces, filter out empty strings, convert to float
         return np.array([float(x) for x in s.strip('[]').split() if x])
+    
+    metric = kl_divergence
+    print('Metric: ', metric.__name__)
+
+    name_1 = '8_neighbors_FN_Rating_CPC'
 
     CPC_recs = pd.read_csv(
-        'src\\data\\baseline_data\\total_eval\\results\\FN_Rating_CPC.csv',
+        f'src\\data\\baseline_data\\total_eval\\results\\{name_1}.csv',
         converters={'topic_bias_matrix': parse_numpy_style_array},
         usecols=['topic_bias_matrix']
     ).to_numpy()
     
     CPC_recs = np.vstack(CPC_recs[:, 0])
     
-    class_divergence = distribution_stat(CPC_recs, w_distance, alpha=0.000)
-    pass
+    class_divergence = distribution_stat(CPC_recs, metric, alpha=0.000)
+    print(name_1)
+    print(class_divergence)
+
+    name_2 = '8_NN_Rating_Rating'
+    print(name_2)
 
     GCF_NN_recs = pd.read_csv(
-        'src\\data\\baseline_data\\total_eval\\results\\NN_Rating_Rating.csv',
+        f'src\\data\\baseline_data\\total_eval\\results\\{name_2}.csv',
         converters={'topic_bias_matrix': parse_numpy_style_array},
         usecols=['topic_bias_matrix']
     ).to_numpy()
     
     GCF_NN_recs = np.vstack(GCF_NN_recs[:, 0])
     
-    gcf_nn_class_divergence = distribution_stat(GCF_NN_recs, w_distance, alpha=0.000)
-    pass
+    gcf_nn_class_divergence = distribution_stat(GCF_NN_recs, metric, alpha=0.000)
+    print(gcf_nn_class_divergence)
     

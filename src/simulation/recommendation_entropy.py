@@ -64,7 +64,7 @@ if __name__ == '__main__':
         return np.array([float(x) for x in s.strip('[]').split() if x])
 
     CPC_recs = pd.read_csv(
-        'src\\data\\baseline_data\\total_eval\\results\\FN_Embedding_CPC.csv',
+        'src\\data\\baseline_data\\total_eval\\results\\8_NN_Rating_Rating.csv',
         converters={'topic_bias_matrix': parse_numpy_style_array},
         usecols=['topic_bias_matrix']
     ).to_numpy()
@@ -75,7 +75,7 @@ if __name__ == '__main__':
     pass
 
     GCF_NN_recs = pd.read_csv(
-        'src\\data\\baseline_data\\total_eval\\results\\NN_Rating_Rating.csv',
+        'src\\data\\baseline_data\\total_eval\\results\\8_neighbors_FN_Rating_CPC.csv',
         converters={'topic_bias_matrix': parse_numpy_style_array},
         usecols=['topic_bias_matrix']
     ).to_numpy()

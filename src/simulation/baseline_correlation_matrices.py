@@ -127,39 +127,34 @@ polarity_free_interest_model = pd.DataFrame(columns=['interest model'])
 distance_embeddings = np.zeros((1000, 9), dtype=np.float64)
 
 p_free_embeddings = []
+polarized_embeddings = []
 
 for user in range(user_item.shape[0]):
     # print('User:' , user)
     user_interactions = user_item.iloc[user]
     
     user_landmark_embedding, polarity_free_embedding = generate_embedding(user_interactions, text_embedding_file, title_embedding_file, encoder_output_dim, encoder, polarity_decoder, polarity_free_decoder)
-    new = landmark_embedding(landmarks, user_landmark_embedding, normalized_distance)
-    distance_embeddings[user] = new
+    # new = landmark_embedding(landmarks, user_landmark_embedding, normalized_distance)
+    # distance_embeddings[user] = new
     
-    p_free_embeddings.append({'interest model': polarity_free_embedding})
+    # p_free_embeddings.append({'interest model': polarity_free_embedding})
+    polarized_embeddings.append({'interest model': user_landmark_embedding[0]})
     
-polarity_free_interest_model = pd.concat([polarity_free_interest_model, pd.DataFrame.from_records(p_free_embeddings)], ignore_index=True)
+# polarity_free_interest_model = pd.concat([polarity_free_interest_model, pd.DataFrame.from_records(p_free_embeddings)], ignore_index=True)
+pd.DataFrame(polarized_embeddings).to_csv('src\\data\\baseline_data\\CF\\bias_models.csv')
+# ## 9d with politype class label
 
-## 9d with politype class label
+# correlation = np.corrcoef(distance_embeddings)
+# distance_embeddings =  pd.DataFrame(distance_embeddings)
+# distance_embeddings.to_csv('src\data\\baseline_data\\user_space\\user_space_matrix.csv')
 
-correlation = np.corrcoef(distance_embeddings)
-distance_embeddings =  pd.DataFrame(distance_embeddings)
-distance_embeddings.to_csv('src\data\\baseline_data\\user_space\\user_space_matrix.csv')
+# ##Now - should have a 9d vector for each of our 1000 users, now we have to calculate all of their similarity
 
-# user_item_matrix.to_csv('src\data\\CF\\user_item_matrix.csv')
+# pd.DataFrame(correlation).to_csv('src\data\\baseline_data\\CF\\correlation_matrix.csv')
 
-##Now - should have a 9d vector for each of our 1000 users, now we have to calculate all of their similarity
 
-pd.DataFrame(correlation).to_csv('src\data\\baseline_data\\CF\\correlation_matrix.csv')
-
-# dot_product_matrix = linear_kernel(distance_embeddings)
-
-# Convert back to a DataFrame (optional, for easier interpretation)
-# dot_product_df = pd.DataFrame(dot_product_matrix)
-# dot_product_df.to_csv('src\data\\user_space\\correlation_matrix.csv')
-
-## did not move to baseline data
-polarity_free_interest_model.to_csv('src\\data\\baseline_data\\CF\\interest_models.csv')
+# ## did not move to baseline data
+# polarity_free_interest_model.to_csv('src\\data\\baseline_data\\CF\\interest_models.csv')
 
 ##edits - use training data (only 4000 items)
 ## also create a user-item matrix 

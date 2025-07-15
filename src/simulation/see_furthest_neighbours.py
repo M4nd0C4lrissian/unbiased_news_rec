@@ -73,14 +73,15 @@ def altered_normalized_bottom_k_with_bias(Bi, k, selection_count, index_set, alp
 
 if __name__ == '__main__':
     user_correlation_matrix = pd.read_csv("src\\data\\baseline_data\\CF\\correlation_matrix.csv").drop(columns=['Unnamed: 0']).to_numpy()
+    # np.fill_diagonal(user_correlation_matrix, 0)
     selection_count = defaultdict(int)
     index_set = set()
     
     #FN - embedding - CPC - 1 
-    k = 30
-    Bi = altered_normalized_bottom_k_with_bias(user_correlation_matrix, k, selection_count, index_set, alpha=0.1)
+    k = 8
+    Bi = altered_normalized_bottom_k_with_bias(user_correlation_matrix, k, selection_count, index_set, alpha=0.0)
     
-    pd.DataFrame(Bi).to_csv('src\\data\\baseline_data\\CF\\FN_matrix.csv')
+    pd.DataFrame(Bi).to_csv(f'src\\data\\baseline_data\\CF\\CPC_{k}_FN_matrix.csv')
     
     ## user 9 is everyone's furthest neighbor?
     ## First look at the user histogram, then the class to class histogram

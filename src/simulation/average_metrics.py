@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 
-paths = ['FN_Embedding_CPC', 'FN_Rating_CPC', 'Joint_Embedding_CPC',  'Joint_Rating_CPC', 'NN_Embedding_CPC', 'NN_Rating_CPC', 'NN_Rating_Rating']
+paths = ['8_neighbors_FN_Rating_CPC']
 columns = ['CTR', 'Utility', '% Topic Coverage', '% Bias Diversity', 'PE@10']
 
 list = []
